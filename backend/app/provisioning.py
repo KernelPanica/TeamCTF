@@ -6,7 +6,7 @@ import time
 from sqlalchemy.orm import Session
 
 from .cases import CaseSpec
-from .models import Match, MatchState
+from .models import Case, Match, MatchState
 from .runtime import DockerRuntime, DockerRuntimeError
 from .states import transition
 
@@ -28,11 +28,17 @@ def _wait_for_ssh(host: str) -> None:
 def provision_arena(session: Session, match: Match, case: CaseSpec, runtime: DockerRuntime) -> None:
     if match.state != MatchState.PROVISIONING:
         raise ValueError("match must be PROVISIONING")
+    if match.case_id is not None and match.case_id != case.id:
+        raise ValueError("case does not match the assigned match case")
     # Refuse to take ownership of an existing arena, including one from another attempt.
     if runtime.inspect(match) is not None:
         raise DockerRuntimeError("match already has a target")
     prepared = False
     try:
+        if session.get(Case, case.id) is None:
+            session.add(Case(id=case.id, name=case.name))
+            session.flush()
+        match.case_id = case.id
         runtime.prepare(match, case)
         prepared = True
         target = runtime.start(match)

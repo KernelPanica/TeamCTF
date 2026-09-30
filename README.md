@@ -189,3 +189,46 @@ sudo bash tests/checkpoint_04.sh
 недействительность старого пароля и новые credentials следующего матча.
 При успехе печатает `CHECKPOINT 4 PASSED`. Матчи теста используют временную БД
 и удаляются после проверки. UI и matchmaking в этот этап не входят.
+
+## Health Checker (Stage 5)
+
+На Linux-хосте controller можно запустить для RUNNING-матча:
+
+```bash
+.venv/bin/cyberrange health watch 42
+```
+
+`DATABASE_URL` должен указывать на БД controller. `--interval` задаёт паузу
+между poll (по умолчанию 2 секунды), `--directory` — каталог cases.
+Команда выводит JSON со статусом HEALTHY/UNHEALTHY и результатами по сервисам;
+завершается при выходе матча из RUNNING или очистке target. На матч запускается
+один watcher. Автоматический запуск из matchmaking относится к Stage 10.
+Provisioning теперь сохраняет связь матча с выбранным case.
+
+`HealthChecker.poll(session, match, case)` выполняет локальный case-checker
+отдельным Python-процессом с таймаутом 5 секунд для каждого required service.
+Аргументы: URL `http://<target-ip>:<port>`, имя сервиса и транспорт `tcp`/`udp`.
+Первый аргумент совместим с исходным HTTP-checker; для других протоколов автор
+case использует адрес/порт из URL и переданный transport, реализуя собственную
+функциональную проверку. Checker исполняется на controller, не в target.
+Exit 0 означает HEALTHY; любой другой exit, ошибка запуска или timeout —
+UNHEALTHY. Вывод checker не попадает в timeline. IP берётся только из матча.
+
+События SERVICE_UP / SERVICE_DOWN / SERVICE_RESTORED записываются в MatchEvent
+по каждому сервису только при смене состояния. Первая неуспешная проверка
+создаёт SERVICE_DOWN. Metadata содержит service, status, reason и накопленный
+закрытый downtime_seconds. Результат poll включает также текущий открытый
+простой. После рестарта состояние восстанавливается из событий в SQLite;
+новая таблица и миграция не нужны. Время событий задаётся controller в UTC,
+точность downtime ограничена частотой polling. Завершённые матчи не проверяются.
+
+Полная проверка этапов 1–5 на хосте:
+
+```bash
+sudo bash tests/checkpoint_05.sh
+```
+
+Тест останавливает и восстанавливает `cyberrange-web` в настоящем target,
+проверяет события, отсутствие дублей и вычисление downtime. Дополнительно
+локальные тесты проверяют неверный HTTP body, timeout, сбой checker, несколько
+сервисов и повторное создание checker. Ожидаемый результат — `CHECKPOINT 5 PASSED`.

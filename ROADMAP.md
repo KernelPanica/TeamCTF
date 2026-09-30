@@ -418,6 +418,18 @@ SERVICE_RESTORED
 
 ## CHECKPOINT 5
 
+**Статус: completed (2026-10-01).**
+
+- Добавлены `HealthChecker.poll` и `cyberrange health watch <match_id>`:
+  внешние функциональные checks, timeout, статусы по каждому required service.
+- События SERVICE_UP/DOWN/RESTORED сохраняются в MatchEvent только при смене
+  состояния; downtime вычисляется по серверным timestamps и восстанавливается
+  из БД после перезапуска checker. Provisioning сохраняет выбранный case.
+- Пользователь выполнил `sudo bash tests/checkpoint_05.sh`:
+  **116 passed**, `CHECKPOINT 5 PASSED` (включая regression tests Stage 1–4).
+- Подтверждены остановка/восстановление настоящего web-сервиса, события
+  без дублей, функциональный контракт и расчёт downtime.
+
 При работающем сервисе:
 
 ```text

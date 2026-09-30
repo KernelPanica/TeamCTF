@@ -486,6 +486,18 @@ BLUE может исправить проблему любым способом,
 
 ## CHECKPOINT 6
 
+**Статус: completed (2026-10-01).**
+
+- `ExploitChecker.check` запускает внешний checker: VULNERABLE / PATCHED /
+  UNREACHABLE / ERROR. Ожидаемый objective передаётся через stdin.
+- `check_defense` объединяет exploit и функциональный health: остановка
+  сервиса, timeout или ошибка checker не дают допуска BLUE.
+- Проверяется результат эксплуатации; проверки версии/способа исправления нет.
+- Пользователь выполнил `sudo bash tests/checkpoint_06.sh`:
+  **126 passed**, `CHECKPOINT 6 PASSED` (включая regression tests Stage 1–5).
+- Подтверждены исходный VULNERABLE, исправленный PATCHED + HEALTHY и
+  остановленный UNREACHABLE + UNHEALTHY без допуска BLUE.
+
 Для исходного target:
 
 ```text

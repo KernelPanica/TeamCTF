@@ -103,8 +103,9 @@ python cases/web-001/checks/health.py http://target:80
 python cases/web-001/checks/exploit.py http://target:80 stage-2-test-objective
 ```
 
-Код 0 означает здоровый сервис / доступный exploit, код 1 — неуспех проверки.
-Различение причин неуспеха и оркестрация проверок относятся к Stage 5–8.
+Для health код 0 означает здоровый сервис, остальные — неуспех проверки.
+Для exploit с Stage 6: 0 — VULNERABLE, 10 — PATCHED, 11 — UNREACHABLE;
+остальные коды означают ERROR.
 
 ## Docker Runtime (Stage 3)
 
@@ -232,3 +233,42 @@ sudo bash tests/checkpoint_05.sh
 проверяет события, отсутствие дублей и вычисление downtime. Дополнительно
 локальные тесты проверяют неверный HTTP body, timeout, сбой checker, несколько
 сервисов и повторное создание checker. Ожидаемый результат — `CHECKPOINT 5 PASSED`.
+
+## Exploit Checker (Stage 6)
+
+`ExploitChecker.check(match, case, expected_key)` запускает локальный
+`checks.exploit` на controller отдельным Python-процессом (timeout 5 секунд).
+Первый required service служит сетевой точкой входа exploit этого case.
+URL передаётся аргументом, ожидаемый objective — через stdin, без вывода в
+логи или аргументы процесса. Значение objective передаёт controller;
+до Stage 8 тестовый case использует `stage-2-test-objective`.
+
+Exit-контракт exploit scripts: 0 = VULNERABLE, 10 = PATCHED,
+11 = UNREACHABLE, остальные = ERROR. Timeout и ошибка запуска также дают
+ERROR: обычный Python crash с exit 1 не считается исправлением.
+Тестовый checker пытается прочитать objective по intended path; не проверяет
+версию пакета, конфигурацию или конкретный способ ремонта. Ответы 403/404/410
+и отсутствие ожидаемого objective означают PATCHED; HTTP 5xx — ERROR.
+
+`check_defense(session, match, case, expected_key, cases_directory)` возвращает
+health, exploit и предварительный `blue_eligible`: true только при RUNNING,
+HEALTHY и PATCHED. Это проверка допуска Stage 6, не выдача ключа или победа:
+проверка из RED-зоны и stabilization добавляются в Stage 7–8.
+
+Пример ручной проверки fixture (код 10 для PATCHED — нормальный результат):
+
+```bash
+printf '%s' 'stage-2-test-objective' | python cases/web-001/checks/exploit.py http://target:80
+```
+
+Полная проверка этапов 1–6 на хосте:
+
+```bash
+sudo bash tests/checkpoint_06.sh
+```
+
+Тест подтверждает VULNERABLE на исходном target, удаляет небезопасный маршрут
+`/download` (контракт `/` сохраняется), получает PATCHED + HEALTHY, затем
+останавливает сервис и проверяет отсутствие допуска BLUE. Ожидаемый итог —
+`CHECKPOINT 6 PASSED`. Локальные тесты дополнительно проверяют другие способы
+блокировки, возврат уязвимости, HTTP 5xx, crash и timeout checker.

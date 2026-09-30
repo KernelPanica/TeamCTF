@@ -1,5 +1,4 @@
 """Functional checks executed by the controller, outside disposable targets."""
-import ipaddress
 import subprocess
 import sys
 import time
@@ -10,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .cases import CaseLoader, CaseSpec
+from .checks import checked_case_directory, target_url
 from .models import Match, MatchEvent, MatchState
 
 
@@ -28,22 +28,12 @@ class HealthChecker:
         self.timeout = timeout
 
     def poll(self, session: Session, match: Match, case: CaseSpec) -> dict:
-        if match.state != MatchState.RUNNING or not match.target_host:
-            raise ValueError("health checks require a running arena")
-        if match.case_id != case.id:
-            raise ValueError("checker must belong to the match case")
-        host = ipaddress.ip_address(match.target_host)
-        directory = self.cases_directory / case.id
-        if directory.is_symlink() or not directory.resolve().is_relative_to(self.cases_directory):
-            raise ValueError("case directory escapes the catalog")
-        if CaseLoader().load(directory) != case:
-            raise ValueError("case changed; reload the catalog")
+        directory = checked_case_directory(match, case, self.cases_directory)
         checker = directory / case.checks.health
-        address = f"[{host}]" if host.version == 6 else str(host)
         results = {}
         for service in case.required_services:
             # Preserve the original URL argument; extra arguments identify the service.
-            url = f"http://{address}:{service.port}"
+            url = target_url(match.target_host, service.port)
             try:
                 process = subprocess.run(
                     [sys.executable, str(checker), url, service.name, service.protocol],

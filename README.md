@@ -1,7 +1,8 @@
 # TeamCTF
 
 Локальная Red vs Blue CTF-платформа. Реализован Stage 1: backend, SQLite,
-миграции и модели. Игровой функционал появится в следующих checkpoint.
+миграции и модели. Stage 2 добавляет формат cases, validator, каталог и CLI.
+Игровой функционал появится в следующих checkpoint.
 
 ## Запуск
 
@@ -60,3 +61,47 @@ python3 -m venv .venv
 Переходы матча: `WAITING → MATCHMAKING → PROVISIONING → RUNNING → FINISHING → FINISHED`.
 Из любого незавершённого состояния разрешён переход в `FAILED`.
 Время событий генерируется backend и хранится в SQLite как UTC без timezone.
+
+## Cases (Stage 2)
+
+```bash
+.venv/bin/cyberrange cases validate
+.venv/bin/cyberrange cases validate --directory /path/to/cases
+```
+
+В Docker после пересборки образа:
+
+```bash
+docker compose run --build --rm --no-deps backend cyberrange cases validate
+```
+
+Команда печатает `READY` или `INVALID` для каждого каталога case; код выхода
+0 означает непустой полностью валидный каталог, 1 — ошибку или пустой каталог.
+`CaseCatalog.list()`, `get(id)` и `random(seed)` возвращают только валидные
+cases. Неизвестный id вызывает `KeyError`, выбор из пустого каталога —
+`CaseFormatError`. Каталог перечитывается при создании `CaseCatalog`;
+порядок сортируется по id, выбор с seed не меняет глобальный random state.
+
+Структура и YAML показаны в `cases/web-001`. Поля обязательны, лишние поля
+отклоняются; имена сервисов и пары port/protocol должны быть уникальны.
+ID должен совпадать с именем каталога. Validator проверяет наличие rootfs,
+базовый образ `ubuntu:20.04`, локальные пути и Python-синтаксис checkers.
+Dockerfile в текущем формате использует буквальный `FROM ubuntu:20.04`
+без alias, аргументов и подстановок.
+
+Cases устанавливает оператор: это доверенный исполняемый код, а не пользовательские
+загрузки. Статус READY подтверждает формат; сборка и поведение target проверяются
+на следующих checkpoint. При валидации код cases не запускается.
+
+Тестовый web-001 намеренно позволяет `/download?path=...` читать файлы target.
+Его статический objective `stage-2-test-objective` служит только fixture Stage 2;
+ключи матча будут генерироваться controller'ом в Stage 8. `/` должен возвращать
+`Cyber Range file service` с переводом строки. Checkers запускаются снаружи:
+
+```bash
+python cases/web-001/checks/health.py http://target:80
+python cases/web-001/checks/exploit.py http://target:80 stage-2-test-objective
+```
+
+Код 0 означает здоровый сервис / доступный exploit, код 1 — неуспех проверки.
+Различение причин неуспеха и оркестрация проверок относятся к Stage 5–8.

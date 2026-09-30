@@ -213,6 +213,18 @@ CaseCatalog
 
 ## CHECKPOINT 2
 
+**Статус: completed (2026-10-01).**
+
+- Добавлены `CaseLoader`, `CaseValidator`, `CaseCatalog` и CLI
+  `cyberrange cases validate`; невалидные cases исключаются из каталога.
+- `.venv/bin/cyberrange cases validate`: `web-001: READY`, exit 0.
+- Тесты повреждённого YAML подтверждают `INVALID`, exit 1; также проверены
+  обязательные поля, пути, структура, Ubuntu base и детерминированный seed.
+- `.venv/bin/python -m pytest -q`: 82 passed, включая все тесты Stage 1
+  и локальную проверку HTTP-контракта тестового сервиса и его checkers.
+- Сборка target и Docker isolation проверяются в Stage 3; READY на этом
+  этапе означает соответствие формату case, а не runtime-проверку.
+
 Создать один тестовый case.
 
 Команда:

@@ -1,0 +1,15 @@
+id: web-001
+name: Example File Service
+category: web
+difficulty: easy
+required_services:
+  - name: web
+    port: 80
+    protocol: tcp
+red:
+  objective_path: /opt/objective/red-key
+blue:
+  stabilization_seconds: 60
+checks:
+  health: checks/health.py
+  exploit: checks/exploit.py

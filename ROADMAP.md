@@ -292,6 +292,16 @@ range-match-42-net
 
 ## CHECKPOINT 3
 
+**Статус: completed (2026-10-01).**
+
+- Реализован `DockerRuntime.prepare/start/inspect/destroy`: отдельная internal
+  bridge network, новый target, limits 1 CPU / 256 MiB / 128 PID, labels
+  `cyberrange=true` и `match_id`; host mounts и volumes образа запрещены.
+- Пользователь выполнил `sudo bash tests/checkpoint_03.sh`:
+  **95 passed**, `CHECKPOINT 3 PASSED`.
+- Подтверждены Ubuntu 20.04, ограничения, файл в первом target, чистый второй
+  target, идемпотентный destroy и отсутствие ресурсов матча после cleanup.
+
 Тест должен:
 
 1. создать match;

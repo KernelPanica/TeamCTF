@@ -105,3 +105,37 @@ python cases/web-001/checks/exploit.py http://target:80 stage-2-test-objective
 
 Код 0 означает здоровый сервис / доступный exploit, код 1 — неуспех проверки.
 Различение причин неуспеха и оркестрация проверок относятся к Stage 5–8.
+
+## Docker Runtime (Stage 3)
+
+`backend.app.runtime.DockerRuntime` запускается на Linux-хосте с доступом к
+Docker CLI и daemon. Методы `prepare(match, case)`, `start(match)`,
+`inspect(match)`, `destroy(match)` принимают `Match` с сохранённым положительным
+id; `case` — спецификация из `CaseCatalog`. Runtime не меняет состояние матча
+в БД: это задача будущего controller.
+
+`prepare` заново проверяет case и собирает образ, затем создаёт отдельную
+внутреннюю bridge network и новый остановленный контейнер. `start` запускает
+его один раз; `inspect` возвращает Docker inspect dict либо `None`, если target
+отсутствует. Повторное использование существующего контейнера запрещено.
+`destroy` идемпотентно удаляет контейнеры, сети и volumes с обеими labels
+`cyberrange=true` и `match_id=<id>`. Docker-ошибки не скрываются.
+
+Limits: 1 CPU, 256 MiB RAM (без дополнительного swap), 128 PID. Target не получает
+privileged, host network/PID, Docker socket или mounts; образы с VOLUME
+отклоняются. Порты на хост не публикуются: target доступен по container IP с
+Linux-хоста. Общий образ `range-case-<case-id>:latest` и build cache сохраняются
+для следующих матчей; файловая система каждого контейнера создаётся заново.
+Compose backend пока не подключён к runtime; Docker socket в него не добавлен.
+
+Полная проверка checkpoint 3 на хосте (включая regression tests Stage 1–2):
+
+```bash
+sudo bash tests/checkpoint_03.sh
+```
+
+Нужна установленная `.venv` из раздела локальной разработки. Скрипт собирает
+Ubuntu target, проверяет ограничения, Ubuntu 20.04, запись файла, уничтожение,
+чистоту следующего target и отсутствие ресурсов после cleanup. Используется
+временная БД; данные приложения не изменяются. При успехе печатает
+`CHECKPOINT 3 PASSED`. Без `RUN_DOCKER=1` интеграционный тест явно пропускается.

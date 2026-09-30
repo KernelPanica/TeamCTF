@@ -348,6 +348,22 @@ Credentials хранятся только в рамках текущего ма�
 
 ## CHECKPOINT 4
 
+**Статус: completed (2026-10-01).**
+
+- В target добавлены SSH, пользователь blue, sudo, управление web-сервисом
+  и firewall через NET_ADMIN без privileged. Host keys создаются при запуске.
+- `provision_arena` генерирует случайный пароль и передаёт его через stdin;
+  `destroy_arena` удаляет реквизиты из БД и уничтожает arena.
+- `GET /matches/{id}/access` проверяет bearer token игрока и MatchPlayer:
+  BLUE получает SSH credentials, RED — только адрес target.
+- Добавлена миграция 0002 с проверкой сохранения существующих данных.
+- В образе явно выбран iptables-nft/ip6tables-nft; backend проверяется тестом.
+- Пользователь выполнил `sudo bash tests/checkpoint_04.sh`:
+  **107 passed**, `CHECKPOINT 4 PASSED` (включая regression tests Stage 1–3).
+- Подтверждены реальный SSH/sudo, firewall, остановка/восстановление web
+  при доступном SSH, отсутствие credentials у RED, отзыв старого пароля
+  и новый пароль следующего матча.
+
 После provisioning backend должен вернуть BLUE:
 
 ```json

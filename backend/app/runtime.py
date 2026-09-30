@@ -23,15 +23,16 @@ class DockerRuntime:
         return str(match.id)
 
     @staticmethod
-    def _docker(*args: str, timeout: int = 60) -> str:
+    def _docker(*args: str, timeout: int = 60, stdin: str | None = None) -> str:
         try:
             result = subprocess.run(
-                ["docker", *args], capture_output=True, text=True, timeout=timeout,
+                ["docker", *args], capture_output=True, text=True, timeout=timeout, input=stdin,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise DockerRuntimeError(f"docker {args[0]} failed: {exc}") from exc
         if result.returncode:
-            raise DockerRuntimeError(f"docker {args[0]} failed: {result.stderr.strip()}")
+            detail = "command with private stdin failed" if stdin is not None else result.stderr.strip()
+            raise DockerRuntimeError(f"docker {args[0]} failed: {detail}")
         return result.stdout.strip()
 
     def _resources(self, kind: str, match_id: str) -> list[str]:
@@ -77,6 +78,7 @@ class DockerRuntime:
                 "--network", network_id, *labels,
                 "--cpus", "1", "--memory", "256m", "--memory-swap", "256m",
                 "--pids-limit", "128", "--init", "--restart", "no",
+                "--cap-add", "NET_ADMIN",
                 "--log-driver", "json-file", "--log-opt", "max-size=10m",
                 "--log-opt", "max-file=2", image_id,
             )

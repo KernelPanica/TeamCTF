@@ -26,6 +26,7 @@ class Player(Base):
     __tablename__ = "players"
     id: Mapped[int] = mapped_column(primary_key=True)
     nickname: Mapped[str] = mapped_column(String, unique=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
 
 
 class Case(Base):
@@ -42,6 +43,8 @@ class Match(Base):
         server_default="WAITING",
     )
     case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"))
+    target_host: Mapped[str | None]
+    blue_password: Mapped[str | None]
 
 
 class MatchPlayer(Base):

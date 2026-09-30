@@ -1,0 +1,53 @@
+"""Minimal player identity and team-scoped arena access; lobby comes in Stage 9."""
+import hashlib
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .models import Match, MatchPlayer, MatchState, Player, Team
+
+
+router = APIRouter()
+bearer = HTTPBearer(auto_error=False)
+
+
+def issue_player_token(player: Player) -> str:
+    """Return once to the player; caller commits the hash with the player."""
+    token = secrets.token_urlsafe(32)
+    player.token_hash = hashlib.sha256(token.encode()).hexdigest()
+    return token
+
+
+class ArenaAccess(BaseModel):
+    host: str
+    port: int | None = None
+    username: str | None = None
+    password: str | None = Field(default=None, repr=False)
+
+
+@router.get("/matches/{match_id}/access", response_model=ArenaAccess, response_model_exclude_none=True)
+def get_access(
+    match_id: int, request: Request, response: Response,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+):
+    if credentials is None:
+        raise HTTPException(401, "Player token required", headers={"WWW-Authenticate": "Bearer"})
+    token_hash = hashlib.sha256(credentials.credentials.encode()).hexdigest()
+    with Session(request.app.state.engine) as session:
+        player = session.scalar(select(Player).where(Player.token_hash == token_hash))
+        if player is None:
+            raise HTTPException(401, "Invalid player token", headers={"WWW-Authenticate": "Bearer"})
+        member = session.get(MatchPlayer, (match_id, player.id))
+        if member is None or member.team not in (Team.RED, Team.BLUE):
+            raise HTTPException(404, "Match not found")
+        match = session.get(Match, match_id)
+        if match.state != MatchState.RUNNING or not match.target_host or not match.blue_password:
+            raise HTTPException(409, "Arena access is unavailable")
+        response.headers["Cache-Control"] = "no-store"
+        if member.team == Team.BLUE:
+            return ArenaAccess(host=match.target_host, port=22, username="blue", password=match.blue_password)
+        return ArenaAccess(host=match.target_host)

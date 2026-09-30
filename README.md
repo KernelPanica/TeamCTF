@@ -139,3 +139,53 @@ Ubuntu target, проверяет ограничения, Ubuntu 20.04, запи
 чистоту следующего target и отсутствие ресурсов после cleanup. Используется
 временная БД; данные приложения не изменяются. При успехе печатает
 `CHECKPOINT 3 PASSED`. Без `RUN_DOCKER=1` интеграционный тест явно пропускается.
+
+## BLUE access (Stage 4)
+
+В target добавлены OpenSSH, `blue`, sudo без дополнительного пароля и
+`iptables` с явно выбранным nft backend для IPv4/IPv6. Capability `NET_ADMIN` разрешает менять firewall внутри namespace
+матча; privileged и host namespaces не используются. Веб-сервис управляется
+через `sudo service cyberrange-web start|stop|restart`; его лог находится в
+`/var/log/cyberrange-web.log`. SSH остаётся доступен при остановке web-сервиса.
+SSH host keys генерируются заново в каждом target при запуске.
+
+Внутренняя функция controller `provision_arena(session, match, case, runtime)`
+принимает сохранённый матч в состоянии PROVISIONING, создаёт и запускает target,
+генерирует пароль через `secrets.token_urlsafe(32)`, передаёт его `chpasswd`
+через stdin, дожидается SSH и переводит матч в RUNNING. Пароля нет в образе,
+Docker labels, environment или аргументах команды. Ошибка provisioning
+переводит матч в FAILED и запускает cleanup созданного target.
+
+`GET /matches/{id}/access` требует `Authorization: Bearer <player-token>`.
+`issue_player_token(player)` выдаёт случайный токен и сохраняет только SHA-256
+hash в модели Player; вызывающая сторона сохраняет Player в БД. Выдача токена
+через lobby появится в Stage 9; сейчас identity создают controller/tests,
+публичного endpoint для выбора команды или создания матча нет.
+
+RED получает `{"host":"..."}`. BLUE получает
+`{"host":"...","port":22,"username":"blue","password":"..."}`.
+Команда определяется по MatchPlayer в БД, параметры запроса её не меняют.
+Чужой матч возвращает 404, неверный токен — 401, неготовая или завершённая
+arena — 409. Ответ с доступом имеет `Cache-Control: no-store`.
+
+Пароль и target IP хранятся в SQLite только на время arena, чтобы BLUE сохраняла
+доступ после перезапуска backend. Для cleanup controller должен использовать
+`destroy_arena(session, match, runtime)`: сначала реквизиты удаляются из БД,
+затем уничтожаются Docker resources. Ошибка Docker не возвращает API-доступ;
+её необходимо устранить и повторить cleanup. Прямой `runtime.destroy` —
+низкоуровневый метод и не изменяет БД. Финализация результата матча появится
+в последующих этапах. На internal network нет доступа в Интернет; исправления
+вносятся средствами уже установленного окружения.
+
+После обновления схемы выполните `.venv/bin/alembic upgrade head`
+(Compose выполняет миграции автоматически). Полная проверка Stage 1–4:
+
+```bash
+sudo bash tests/checkpoint_04.sh
+```
+
+На хосте нужен клиент `ssh`. Тест проверяет реальный password login, `sudo`,
+управление сервисом, firewall, отсутствие credentials в RED response,
+недействительность старого пароля и новые credentials следующего матча.
+При успехе печатает `CHECKPOINT 4 PASSED`. Матчи теста используют временную БД
+и удаляются после проверки. UI и matchmaking в этот этап не входят.

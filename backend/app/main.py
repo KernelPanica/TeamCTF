@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .database import make_engine
+from .access import router as access_router
 
 
 def create_app(database_url=None):
@@ -18,6 +19,7 @@ def create_app(database_url=None):
             app.state.engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
+    app.include_router(access_router)
 
     @app.get("/health")
     def health():

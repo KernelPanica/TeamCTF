@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+    start)
+        start-stop-daemon --start --quiet --oknodo --background --make-pidfile \
+            --pidfile /run/cyberrange-web.pid --startas /bin/sh -- -c \
+            'exec python3 /opt/service/server.py >>/var/log/cyberrange-web.log 2>&1'
+        ;;
+    stop)
+        start-stop-daemon --stop --quiet --oknodo --retry TERM/5/KILL/5 \
+            --pidfile /run/cyberrange-web.pid --remove-pidfile
+        ;;
+    restart)
+        "$0" stop
+        "$0" start
+        ;;
+    *) echo 'Usage: service cyberrange-web {start|stop|restart}' >&2; exit 2 ;;
+esac

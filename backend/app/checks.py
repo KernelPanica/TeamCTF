@@ -21,6 +21,11 @@ def checked_case_directory(match: Match, case: CaseSpec, root: Path) -> Path:
 
 
 def target_url(host: str, port: int) -> str:
-    address = ipaddress.ip_address(host)
-    host = f"[{address}]" if address.version == 6 else str(address)
+    try:
+        address = ipaddress.ip_address(host)
+        host = f"[{address}]" if address.version == 6 else str(address)
+    except ValueError:
+        # Docker DNS name, produced by the runtime rather than user input.
+        if not host.startswith("range-match-") or not host.endswith("-target"):
+            raise ValueError("invalid target host")
     return f"http://{host}:{port}"

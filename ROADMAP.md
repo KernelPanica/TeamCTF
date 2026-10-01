@@ -564,6 +564,19 @@ functional healthcheck passes
 
 ## CHECKPOINT 7
 
+**Статус: completed (2026-10-01).**
+
+- Добавлен изолированный ephemeral probe в network матча: functional health
+  и exploit выполняются из эквивалентной RED-зоны.
+- `check_red_defense` требует HEALTHY + RED surface AVAILABLE + PATCHED;
+  остановка сервиса и блокировка RED-зоны не дают допуска BLUE.
+- Probe read-only, без capabilities, без objective, с limits и labels матча;
+  удаляется после проверки и обычным cleanup при orphan.
+- Пользователь выполнил `sudo bash tests/checkpoint_07.sh`:
+  **133 passed**, `CHECKPOINT 7 PASSED` (включая regression tests Stage 1–6).
+- Подтверждены все сценарии A/B/C: остановка сервиса, блокировка RED subnet
+  при доступном controller health и исправление с доступной поверхностью.
+
 Проверить три сценария.
 
 ### A. BLUE останавливает сервис

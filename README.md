@@ -272,3 +272,27 @@ sudo bash tests/checkpoint_06.sh
 останавливает сервис и проверяет отсутствие допуска BLUE. Ожидаемый итог —
 `CHECKPOINT 6 PASSED`. Локальные тесты дополнительно проверяют другие способы
 блокировки, возврат уязвимости, HTTP 5xx, crash и timeout checker.
+
+## RED-zone checks (Stage 7)
+
+`check_red_defense(...)` сохраняет обычный controller health-check и запускает
+functional health + intended exploit из краткоживущего probe-контейнера в той
+же internal network, что и target. Допуск BLUE требует одновременно HEALTHY,
+AVAILABLE из RED-зоны и PATCHED. Остановка сервиса или firewall-блокировка
+RED-зоны всегда дают `blue_eligible: false`.
+
+Probe строится из точного image target, но отдельным слоем получает только
+case checkers; `/opt/objective` удаляется. Он запускается read-only, без Linux
+capabilities, с `no-new-privileges`, 64 MiB RAM и 32 PID. После каждой проверки
+probe удаляется; orphaned probe имеет labels матча и удаляется обычным
+`DockerRuntime.destroy`. Target не содержит checker-файлы.
+
+Полная проверка этапов 1–7 на хосте:
+
+```bash
+sudo bash tests/checkpoint_07.sh
+```
+
+Тест проверяет три сценария: остановленный сервис; controller health доступен,
+но RED subnet заблокирован firewall; сервис доступен из RED-зоны после
+устранения unsafe route. Ожидаемый итог — `CHECKPOINT 7 PASSED`.

@@ -4,6 +4,12 @@
 SSH-доступ BLUE, проверки защиты, выдача ключа BLUE и веб-лобби.
 Автоматическое создание матчей появится в Stage 10.
 
+**Checkpoint 8A: Portal/Arena split завершён.** Host-проверка: 161 passed,
+1 skipped (opt-in Chromium). Stage 8–9 сохранены. Развёртывание двух серверов,
+TLS, firewall, новый async provider API и проверка описаны в [arena/README.md](arena/README.md).
+Ниже разделы Stage 3–8 описывают исходное поведение; исполнение теперь находится
+в Arena, а controller означает Portal, обращающийся через provider.
+
 ## Запуск
 
 Нужны Docker Engine и Docker Compose:
@@ -110,7 +116,7 @@ python cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
 
 ## Docker Runtime (Stage 3)
 
-`backend.app.runtime.DockerRuntime` запускается на Linux-хосте с доступом к
+`arena.app.runtime.docker.DockerRuntime` запускается на Arena Linux-хосте с доступом к
 Docker CLI и daemon. Методы `prepare(match, case)`, `start(match)`,
 `inspect(match)`, `destroy(match)` принимают `Match` с сохранённым положительным
 id; `case` — спецификация из `CaseCatalog`. Runtime не меняет состояние матча
@@ -151,7 +157,7 @@ Ubuntu target, проверяет ограничения, Ubuntu 20.04, запи
 `/var/log/cyberrange-web.log`. SSH остаётся доступен при остановке web-сервиса.
 SSH host keys генерируются заново в каждом target при запуске.
 
-Внутренняя функция controller `provision_arena(session, match, case, runtime)`
+Внутренняя async функция Portal `provision_arena(session, match, case, provider)`
 принимает сохранённый матч в состоянии PROVISIONING, создаёт и запускает target,
 генерирует пароль через `secrets.token_urlsafe(32)`, передаёт его `chpasswd`
 через stdin, дожидается SSH и переводит матч в RUNNING. Пароля нет в образе,
@@ -172,7 +178,7 @@ arena — 409. Ответ с доступом имеет `Cache-Control: no-stor
 
 Пароль и target IP хранятся в SQLite только на время arena, чтобы BLUE сохраняла
 доступ после перезапуска backend. Для cleanup controller должен использовать
-`destroy_arena(session, match, runtime)`: сначала реквизиты удаляются из БД,
+`await destroy_arena(session, match, provider)`: сначала реквизиты удаляются из БД,
 затем уничтожаются Docker resources. Ошибка Docker не возвращает API-доступ;
 её необходимо устранить и повторить cleanup. Прямой `runtime.destroy` —
 низкоуровневый метод и не изменяет БД. Финализация результата матча появится

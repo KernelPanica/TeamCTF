@@ -2,12 +2,12 @@
 import ipaddress
 from pathlib import Path
 
-from .cases import CaseLoader, CaseSpec
-from .models import Match, MatchState
+from shared.cases import CaseLoader, CaseSpec
+from arena.app.runtime.context import RuntimeMatch as Match
 
 
 def checked_case_directory(match: Match, case: CaseSpec, root: Path) -> Path:
-    if match.state != MatchState.RUNNING or not match.target_host:
+    if match.state != "RUNNING" or not match.target_host:
         raise ValueError("checks require a running arena")
     if match.case_id != case.id:
         raise ValueError("checker must belong to the match case")

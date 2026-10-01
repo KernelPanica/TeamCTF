@@ -2,10 +2,12 @@
 import json
 import subprocess
 import tempfile
+import hashlib
 from pathlib import Path
 
-from .cases import CaseLoader, CaseSpec
-from .models import Match
+from shared.cases import CaseLoader, CaseSpec
+from arena.app.runtime.context import RuntimeMatch as Match
+from shared.arena import Endpoint
 
 
 class DockerRuntimeError(RuntimeError):
@@ -13,8 +15,11 @@ class DockerRuntimeError(RuntimeError):
 
 
 class DockerRuntime:
-    def __init__(self, cases_directory: Path = Path("cases")):
+    def __init__(self, cases_directory: Path = Path("cases"), *, owner="local", publish_ip=None, public_host=None):
         self.cases_directory = Path(cases_directory).resolve()
+        self.owner = owner
+        self.publish_ip = publish_ip
+        self.public_host = public_host or publish_ip
 
     @staticmethod
     def _match_id(match: Match) -> str:
@@ -35,13 +40,16 @@ class DockerRuntime:
             raise DockerRuntimeError(f"docker {args[0]} failed: {detail}")
         return result.stdout.strip()
 
-    def _resources(self, kind: str, match_id: str) -> list[str]:
+    def _resources(self, kind: str, match_id: str, role=None) -> list[str]:
         args = [kind, "ls", "--quiet"]
         if kind == "container":
             args.append("--all")
+        if role:
+            args += ["--filter", f"label=role={role}"]
         return self._docker(
             *args, "--filter", "label=cyberrange=true",
             "--filter", f"label=match_id={match_id}",
+            "--filter", f"label=arena_owner={self.owner}",
         ).split()
 
     def prepare(self, match: Match, case: CaseSpec) -> dict:
@@ -66,16 +74,27 @@ class DockerRuntime:
         if image["Config"].get("Volumes"):
             raise DockerRuntimeError("case images must not declare volumes")
 
-        labels = ["--label", "cyberrange=true", "--label", f"match_id={match_id}"]
+        labels = ["--label", "cyberrange=true", "--label", f"match_id={match_id}",
+                  "--label", f"arena_owner={self.owner}"]
+        network_options = ["--internal"]
+        published = []
+        if self.publish_ip:
+            from .firewall import verify
+            verify()
+            bridge = "crarena" + hashlib.sha256(f"{self.owner}:{match_id}".encode()).hexdigest()[:8]
+            network_options = ["--opt", f"com.docker.network.bridge.name={bridge}"]
+            ports = {(22, "tcp")} | {(s.port, s.protocol) for s in case.required_services}
+            for port, protocol in sorted(ports):
+                published += ["--publish", f"{self.publish_ip}::{port}/{protocol}"]
         network_id = container_id = None
         try:
             network_id = self._docker(
-                "network", "create", "--driver", "bridge", "--internal",
+                "network", "create", "--driver", "bridge", *network_options,
                 *labels, f"range-match-{match_id}-net",
             )
             container_id = self._docker(
                 "create", "--name", f"range-match-{match_id}-target",
-                "--network", network_id, *labels,
+                "--network", network_id, *labels, "--label", "role=target", *published,
                 "--cpus", "1", "--memory", "256m", "--memory-swap", "256m",
                 "--pids-limit", "128", "--init", "--restart", "no",
                 "--cap-add", "NET_ADMIN",
@@ -101,7 +120,7 @@ class DockerRuntime:
 
     def inspect(self, match: Match) -> dict | None:
         match_id = self._match_id(match)
-        containers = self._resources("container", match_id)
+        containers = self._resources("container", match_id, role="target")
         if not containers:
             return None
         if len(containers) != 1:
@@ -124,6 +143,29 @@ class DockerRuntime:
         match_id = self._match_id(match)
         for kind in ("container", "network", "volume"):
             resources = self._resources(kind, match_id)
+            if resources:
+                options = ["--force", "--volumes"] if kind == "container" else []
+                self._docker(kind, "rm", *options, *resources)
+
+    def endpoints(self, target, case, internal_host):
+        services = [(s.name, s.port, s.protocol) for s in case.required_services]
+        services.append(("ssh", 22, "tcp"))
+        result = []
+        for name, port, protocol in services:
+            host = internal_host
+            if self.publish_ip:
+                binding = target["NetworkSettings"]["Ports"][f"{port}/{protocol}"]
+                if len(binding) != 1 or binding[0]["HostIp"] != self.publish_ip:
+                    raise DockerRuntimeError("unexpected published endpoint")
+                host, port = self.public_host, int(binding[0]["HostPort"])
+            result.append(Endpoint(name=name, host=host, port=port, protocol=protocol))
+        return result
+
+    def cleanup_owned(self):
+        for kind in ("container", "network", "volume"):
+            args = [kind, "ls", "--quiet"] + (["--all"] if kind == "container" else [])
+            resources = self._docker(*args, "--filter", "label=cyberrange=true",
+                                     "--filter", f"label=arena_owner={self.owner}").split()
             if resources:
                 options = ["--force", "--volumes"] if kind == "container" else []
                 self._docker(kind, "rm", *options, *resources)

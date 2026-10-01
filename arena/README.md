@@ -1,0 +1,158 @@
+# Portal / Arena — checkpoint 8A
+
+Portal owns SQLite, players, teams, game state, RED_KEY/BLUE_KEY, decisions and
+history. Arena owns disposable Docker environments and checker execution.
+Agent never imports Portal code or connects to its database. It receives only
+the RED objective needed by the case, never BLUE_KEY or Portal session tokens.
+
+The management token authorizes requests **to Arena only**. Portal accepts no
+callbacks from Arena. Arena can falsify observations if compromised; this split
+protects Portal credentials, not the integrity of an already compromised host.
+
+## Portal without Docker
+
+Install the project on the trusted Portal machine, then:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e '.[test]'
+export DATABASE_URL=sqlite:///data/cyberrange.db
+export ARENA_PROVIDER=remote
+export ARENA_URL=https://arena-management.example:8443
+export ARENA_TOKEN='<dedicated random token, at least 32 characters>'
+export ARENA_CA_FILE=/etc/cyberrange/arena-ca.crt
+.venv/bin/alembic upgrade head
+.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+Omit `ARENA_CA_FILE` for a certificate trusted by the system CA store. HTTPS,
+hostname verification and certificate verification cannot be disabled. Redirects
+are not followed. The Portal starts and serves lobby/history without any Arena
+configuration; provisioning requires a configured provider.
+
+Existing Portal Compose supports `ARENA_URL` and `ARENA_TOKEN`. For a private CA:
+
+```bash
+docker compose -f compose.yaml -f docker/portal-arena.yaml up --build -d --wait
+```
+
+Only the public CA certificate is mounted into Portal. Arena's TLS private key
+stays on Arena. There is no Docker socket mount in Portal Compose.
+
+## Dedicated Arena machine
+
+Linux, Docker Engine with its **iptables firewall backend** (iptables-nft is
+supported), OpenSSH client for tests, and two separate assigned IPv4 addresses
+are required. Docker's native nftables backend is not supported by this first
+version: absence of `DOCKER-USER` causes a closed failure. IPv6 publication is
+not enabled. Do not run multiple Agent workers or replicas against one owner.
+
+Before migration, destroy old active environments using the old controller.
+Historical SQLite rows are retained; old live arenas are not adopted.
+
+Set a stable unique `ARENA_OWNER`, a separate `ARENA_GAME_IP`, private
+`ARENA_MANAGEMENT_IP`, player-reachable `ARENA_PUBLIC_HOST`, `ARENA_TOKEN`, and
+`ARENA_CERT_DIR` containing `tls.crt` and `tls.key`. The certificate SAN must
+match `ARENA_URL`. Keep these variables on Arena; do not copy Portal `.env`,
+SQLite, session secrets or SSH private keys there.
+
+Install host policy before starting Agent (from the repository with its venv):
+
+```bash
+sudo .venv/bin/python -m arena.app.runtime.firewall
+docker compose -f arena/compose.yaml up --build -d
+```
+
+The policy creates only `ARENA_INPUT` and `ARENA_FORWARD` chains and places
+their jumps first in INPUT/DOCKER-USER for `crarena*` bridges. It does not flush
+host or Docker chains, or flush a live Arena chain. Existing conflicting Arena
+policy requires stopping arenas and correcting it before startup.
+
+Management listens only on the configured private address. Host policy denies
+new target-to-host connections, including management and host gateway, and new
+connections outside the target's bridge. Responses to player/controller traffic
+and same-bridge RED probes remain possible. Bind management behind a private
+network/firewall accessible only to Portal; do not publish it on a public NIC.
+
+Remote targets publish SSH and required service ports on `ARENA_GAME_IP`; Docker
+allocates host ports. Agent returns the actual port mapping. Remote bridges use
+host filtering instead of Docker `--internal`, since players need published
+ports. Resource limits, capabilities, service behavior and checker contracts
+remain unchanged. Agent verifies host policy on startup and before each create.
+Recheck policy after Docker/firewall restarts; do not operate arenas with a
+firewall manager that removes these rules.
+
+Agent needs Docker socket access and host NET_ADMIN to verify policy; those
+privileges belong only on the disposable Arena server. Target containers never
+receive the socket, management token or TLS key. Image COPY operations include
+only Arena, shared contracts and cases; no Portal database or code is copied.
+
+For a native Agent process, set the same variables plus `ARENA_TLS_CERT`,
+`ARENA_TLS_KEY` and `ARENA_CASES`, then run `python -m arena.app.serve` with
+Docker/firewall permissions. The entrypoint requires TLS and a private bind IP.
+
+## Operations and recovery
+
+`ArenaProvider` exposes async `create_match(CreateMatch)`, `get_match(id)`,
+`get_events(id, after=0)` and `destroy_match(id)`. Portal provisioning functions
+are async and accept a provider; they no longer accept DockerRuntime.
+
+Agent exposes only authenticated POST `/matches`, GET `/matches/{id}`, GET
+`/matches/{id}/events?after=N` and DELETE `/matches/{id}`. No shell/exec API is
+available. Cases are installed by the Arena operator, not uploaded through API.
+
+Creation returns 202 with an execution state. Poll until READY or FAILED.
+Repeating a create with the same ID/run/parameters reuses the operation; different
+parameters conflict. A deleted run remains a non-secret tombstone until restart.
+Use a new Portal match ID for a new environment. DELETE waits for in-flight
+creation/checks, then removes containers, networks and volumes. Cleanup failure
+revokes API credentials immediately and is retriable.
+
+Active events live in a bounded in-memory journal (1,000 entries, pages of 100).
+Portal persists observations with a cursor transaction and records downtime and
+game decisions itself. Cursor gaps are explicit failures and cancel securing;
+they never count as successful defense. Run one game observer per match.
+No fresh observation does not grant a key; a gap longer than 30 seconds cancels
+the existing Stage 8 countdown. Stage 8 development remains paused until 8A passes.
+
+On Agent restart, startup removes resources carrying its owner label before
+accepting creates. No full match database or credentials are recovered. Portal
+reconciles known running executions every five seconds, marks lost arenas FAILED,
+revokes credentials and retries pending cleanup. Network timeouts alone do not
+mean a target was destroyed. A provisioning call with an uncertain POST result
+can be retried using its persisted run ID and original keys.
+
+Match access retains `host`; BLUE retains `username`, `password` and `port` (now
+the published SSH port). New `services` entries contain name/host/port/protocol.
+RED never receives SSH credentials. Legacy history without endpoints still reads.
+
+## Local development
+
+Set `ARENA_PROVIDER=local` and optionally `ARENA_CASES=cases` for a **single Portal
+process** with Docker access. LocalArenaProvider calls the same ArenaService and
+Executor without HTTP; targets retain internal bridge/IP access. Do not launch
+another local-provider process or CLI against the same active owner: execution
+state is process-local and startup cleanup is intentional. To exercise separate
+Portal/CLI processes on one machine, run Agent separately with RemoteArenaProvider.
+
+## Acceptance
+
+Prepare the venv and run on the Linux Docker host as root:
+
+```bash
+.venv/bin/pip install -e '.[test,browser]'
+sudo bash tests/checkpoint_08a.sh
+```
+
+This explicitly installs/verifies the dedicated host firewall chains, runs the
+Stage 1–8 regression, Stage 9 API regression and 8A contract/integration tests.
+The real integration starts a temporary Agent with a trusted test TLS certificate,
+creates Ubuntu 20.04 through RemoteArenaProvider, verifies published HTTP/SSH,
+checks health/exploit, attempts management access from the hostile target,
+deletes resources and tests abrupt Agent restart cleanup. It uses a unique owner
+and temporary Portal databases. It needs a private non-loopback host IPv4 address;
+set `ARENA_TEST_MANAGEMENT_IP` to override automatic route-based selection.
+
+Chromium regression remains independently available with `RUN_BROWSER=1`.
+Only an actual successful host run permits `CHECKPOINT 8A PASSED` and the final
+`checkpoint-08a: split portal and arena runtime` commit.

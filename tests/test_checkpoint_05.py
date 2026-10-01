@@ -1,4 +1,5 @@
 import os
+import asyncio
 import secrets
 import shutil
 import subprocess
@@ -17,10 +18,12 @@ from sqlalchemy.orm import Session
 
 from backend.app.cases import CaseLoader
 from backend.app.database import Base, make_engine
-from backend.app.health import HealthChecker, watch_health
+from arena_support import HealthChecker
+from backend.app.health import watch_health
+from arena_support import observation_provider
 from backend.app.models import Case, Match, MatchEvent, MatchState
-from backend.app.provisioning import destroy_arena, provision_arena
-from backend.app.runtime import DockerRuntime
+from arena_support import destroy_arena, provision_arena
+from arena.app.runtime.docker import DockerRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,13 +140,15 @@ def test_functional_contract_not_just_open_port(health_arena):
 def test_watcher_stops_after_arena_cleanup(health_arena, monkeypatch):
     session, match, directory = health_arena
     monkeypatch.setattr(subprocess, "run", Mock(return_value=subprocess.CompletedProcess([], 0)))
-    watcher = watch_health(session.get_bind(), match.id, directory.parent, interval=0.001)
-    assert next(watcher)["status"] == "HEALTHY"
-    match.target_host = None
-    session.commit()
-    with pytest.raises(StopIteration):
-        next(watcher)
-    assert len(events(session, match)) == 1
+    provider = observation_provider(session, match, CaseLoader().load(directory), "test-key", directory.parent)
+    watcher = watch_health(session.get_bind(), match.id, provider, interval=0.001)
+    with asyncio.Runner() as runner:
+        assert runner.run(anext(watcher))["status"] == "HEALTHY"
+        match.target_host = None
+        session.commit()
+        with pytest.raises(StopAsyncIteration):
+            runner.run(anext(watcher))
+    assert len([e for e in events(session, match) if e.type == "SERVICE_UP"]) == 1
 
 
 def test_stopped_or_wrong_case_not_checked(health_arena, monkeypatch):

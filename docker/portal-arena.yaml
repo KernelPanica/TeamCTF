@@ -1,0 +1,7 @@
+# Optional override for a private Arena CA; the Portal still has no Docker socket.
+services:
+  backend:
+    environment:
+      ARENA_CA_FILE: /run/arena-ca.crt
+    volumes:
+      - ${ARENA_CA_FILE:?set absolute path to Arena CA certificate}:/run/arena-ca.crt:ro

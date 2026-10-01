@@ -40,6 +40,7 @@ class ArenaAccess(BaseModel):
     username: str | None = None
     password: str | None = Field(default=None, repr=False)
     blue_key: str | None = Field(default=None, repr=False)
+    services: list[dict] | None = None
 
 
 @router.get("/matches/{match_id}/access", response_model=ArenaAccess, response_model_exclude_none=True)
@@ -56,9 +57,15 @@ def get_access(
         if match.state != MatchState.RUNNING or not match.target_host or not match.blue_password:
             raise HTTPException(409, "Arena access is unavailable")
         response.headers["Cache-Control"] = "no-store"
+        services = None
+        ssh_port = 22
+        if match.arena_endpoints:
+            services = [e for e in match.arena_endpoints if e["name"] != "ssh"]
+            ssh_port = next(e["port"] for e in match.arena_endpoints if e["name"] == "ssh")
         if member.team == Team.BLUE:
             return ArenaAccess(
-                host=match.target_host, port=22, username="blue", password=match.blue_password,
+                host=match.target_host, port=ssh_port, username="blue", password=match.blue_password,
+                services=services,
                 blue_key=match.blue_key if match.blue_key_issued_at is not None else None,
             )
-        return ArenaAccess(host=match.target_host)
+        return ArenaAccess(host=match.target_host, services=services)

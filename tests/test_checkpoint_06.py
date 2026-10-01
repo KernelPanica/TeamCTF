@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.cases import CaseLoader
 from backend.app.database import Base, make_engine
-from backend.app.exploit import ExploitChecker, check_defense
+from arena.app.checks.exploit import ExploitChecker
+from arena_support import check_defense
 from backend.app.models import Case, Match, MatchState
-from backend.app.provisioning import destroy_arena, provision_arena
-from backend.app.runtime import DockerRuntime
+from arena_support import destroy_arena, provision_arena
+from arena.app.runtime.docker import DockerRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]

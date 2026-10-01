@@ -601,6 +601,37 @@ BLUE WIN ELIGIBLE = true
 
 ---
 
+# CHECKPOINT 8A — Portal/Arena Architecture Split
+
+**Статус: completed (2026-10-01).**
+
+Изменение архитектуры имеет приоритет перед дальнейшей разработкой Stage 8–9.
+Их существующий код сохранён; WIP лобби отдельно сохранён в commit `11022ed`.
+
+- Portal: игроки, команды, состояния, RED_KEY/BLUE_KEY, игровые решения и история.
+- Arena: Docker, временные credentials, подготовка case, health/exploit/RED-zone
+  проверки и журнал наблюдений; без Portal ORM/БД/секретов.
+- Общий async ArenaProvider: Local и Remote, одинаковое исполнение без дублирования.
+- Remote: HTTPS + отдельный Bearer token, опубликованные игровые порты,
+  management на private IP, host firewall блокирует обращения target.
+- Перезапуск Agent очищает ресурсы его owner; Portal отзывает потерянные arenas
+  и повторяет неуспешный cleanup. Ключ BLUE никогда не передаётся Arena.
+- Разрешены только create/status/events/delete, без generic exec/shell endpoint.
+- Stage 1–7 сохраняют поведенческие тесты; изменены пути и тестовые адаптеры границы.
+- Итоговая локальная регрессия с Chromium: **155 passed, 7 Docker skipped**.
+  Проверены Local/Remote contract, gap/recovery, host-policy validation,
+  Portal без Docker/импортов Arena и сохранённые Stage 1–9.
+- Проверка: `sudo bash tests/checkpoint_08a.sh`; deployment и ограничения — `arena/README.md`.
+- Пользователь подтвердил полную host-проверку: **161 passed, 1 skipped**,
+  `CHECKPOINT 8A PASSED` (150.85 s). Пропущен только opt-in Chromium-тест
+  Stage 9, ранее пройденный локально; Docker/HTTPS/firewall-проверки выполнены.
+- Commit checkpoint:
+  `checkpoint-08a: split portal and arena runtime`.
+
+**Не возобновлять Stage 8, пока CHECKPOINT 8A не проходит.**
+
+---
+
 # Stage 8 — Victory Engine
 
 При provisioning генерировать:

@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+from contextlib import suppress
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,14 +13,29 @@ from sqlalchemy.exc import SQLAlchemyError
 from .database import make_engine
 from .access import router as access_router
 from .lobby import router as lobby_router
+from .arena_provider import configured_provider
+from .arena_reconcile import reconcile_forever
 
 
-def create_app(database_url=None):
+def create_app(database_url=None, arena_provider=None):
     @asynccontextmanager
     async def lifespan(app):
         app.state.engine = make_engine(database_url)
         try:
-            yield
+            if arena_provider is not None:
+                app.state.arena_provider = arena_provider
+                yield
+            else:
+                async with configured_provider() as provider:
+                    app.state.arena_provider = provider
+                    task = asyncio.create_task(reconcile_forever(app.state.engine, provider)) if provider else None
+                    try:
+                        yield
+                    finally:
+                        if task:
+                            task.cancel()
+                            with suppress(asyncio.CancelledError):
+                                await task
         finally:
             app.state.engine.dispose()
 

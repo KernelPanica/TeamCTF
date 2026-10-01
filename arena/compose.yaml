@@ -1,0 +1,20 @@
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: arena/Dockerfile
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      ARENA_OWNER: ${ARENA_OWNER:?set a stable unique Arena owner}
+      ARENA_TOKEN: ${ARENA_TOKEN:?set a dedicated Arena token}
+      ARENA_MANAGEMENT_IP: ${ARENA_MANAGEMENT_IP:?set a private management IP}
+      ARENA_GAME_IP: ${ARENA_GAME_IP:?set a separate game IP}
+      ARENA_PUBLIC_HOST: ${ARENA_PUBLIC_HOST:?set a player-reachable host}
+      ARENA_TLS_CERT: /run/arena/tls.crt
+      ARENA_TLS_KEY: /run/arena/tls.key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${ARENA_CERT_DIR:?set directory with Arena TLS certificate}:/run/arena:ro
+    restart: unless-stopped

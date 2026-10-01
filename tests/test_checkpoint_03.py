@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from backend.app.cases import CaseLoader
 from backend.app.database import Base, make_engine
 from backend.app.models import Match
-from backend.app.runtime import DockerRuntime, DockerRuntimeError
+from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 
 
 CASE_ROOT = Path(__file__).resolve().parents[1] / "cases"

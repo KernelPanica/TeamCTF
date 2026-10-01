@@ -52,6 +52,11 @@ class Match(Base):
     blue_key: Mapped[str | None]
     securing_started_at: Mapped[datetime | None] = mapped_column(DateTime)
     blue_key_issued_at: Mapped[datetime | None] = mapped_column(DateTime)
+    arena_run_id: Mapped[str | None]
+    arena_instance_id: Mapped[str | None]
+    arena_cursor: Mapped[int] = mapped_column(default=0, server_default="0")
+    arena_endpoints: Mapped[list | None] = mapped_column(JSON)
+    arena_cleanup_pending: Mapped[bool] = mapped_column(default=False, server_default="0")
 
 
 class MatchPlayer(Base):

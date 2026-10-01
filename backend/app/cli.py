@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import json
 from pathlib import Path
 
@@ -6,6 +7,17 @@ from .cases import CaseCatalog
 from .database import make_engine
 from .health import watch_health
 from .victory import watch_victory
+from .arena_provider import configured_provider
+from shared.arena import ArenaError
+
+
+async def run_watcher(engine, args):
+    async with configured_provider() as provider:
+        if provider is None:
+            raise ArenaError("ARENA_NOT_CONFIGURED")
+        watcher = watch_health if args.command == "health" else watch_victory
+        async for result in watcher(engine, args.match_id, provider, args.interval):
+            print(json.dumps(result), flush=True)
 
 
 def main():
@@ -24,10 +36,8 @@ def main():
     if args.command in ("health", "victory"):
         engine = make_engine()
         try:
-            watcher = watch_health if args.command == "health" else watch_victory
-            for result in watcher(engine, args.match_id, args.directory, args.interval):
-                print(json.dumps(result), flush=True)
-        except (OSError, ValueError) as exc:
+            asyncio.run(run_watcher(engine, args))
+        except (OSError, ValueError, ArenaError) as exc:
             print(f"ERROR: {exc}")
             return 1
         except KeyboardInterrupt:

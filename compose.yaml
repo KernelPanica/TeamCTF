@@ -7,6 +7,9 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: sqlite:////app/data/cyberrange.db
+      ARENA_PROVIDER: remote
+      ARENA_URL: ${ARENA_URL:-}
+      ARENA_TOKEN: ${ARENA_TOKEN:-}
     volumes:
       - ./data:/app/data
     healthcheck:

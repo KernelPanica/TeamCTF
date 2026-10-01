@@ -21,8 +21,9 @@ from backend.app.cases import CaseLoader
 from backend.app.database import make_engine
 from backend.app.main import create_app
 from backend.app.models import Match, MatchPlayer, MatchState, Player, Team
-from backend.app.provisioning import destroy_arena, provision_arena
-from backend.app.runtime import DockerRuntime, DockerRuntimeError
+from arena_support import destroy_arena, provision_arena
+from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
+from shared.arena import Endpoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,17 +106,19 @@ def test_credentials_unavailable_outside_running(arena_db, state):
 @pytest.mark.parametrize("failure", [False, True])
 def test_provisioning_uses_private_stdin_and_cleans_failure(arena_db, monkeypatch, failure):
     _, session, match, _ = arena_db
-    monkeypatch.setattr("backend.app.provisioning._wait_for_ssh", Mock())
+    monkeypatch.setattr("arena.app.runtime.executor._wait_for_ssh", Mock())
     runtime = Mock()
     runtime.inspect.return_value = None
     runtime.start.return_value = {"Id": "target", "NetworkSettings": {"Networks": {"net": {"IPAddress": "172.20.0.2"}}}}
+    runtime.endpoints.return_value = [Endpoint(name="ssh", host="172.20.0.2", port=22)]
     if failure:
         runtime._docker.side_effect = DockerRuntimeError("chpasswd failed")
         with pytest.raises(DockerRuntimeError):
             provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
         assert match.state == MatchState.FAILED and match.blue_password is None
         assert match.red_key is None and match.blue_key is None
-        runtime.destroy.assert_called_once_with(match)
+        runtime.destroy.assert_called_once()
+        assert runtime.destroy.call_args.args[0].id == match.id
     else:
         provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
         assert match.state == MatchState.RUNNING and len(match.blue_password) >= 40
@@ -198,7 +201,7 @@ def test_blue_ssh_sudo_firewall_and_revocation(arena_db, tmp_path):
             endpoint = f"/matches/{match.id}/access"
             blue = client.get(endpoint, headers=auth(tokens[1])).json()
             red = client.get(endpoint, headers=auth(tokens[0])).json()
-            assert red == {"host": blue["host"]}
+            assert red == {"host": blue["host"], "services": blue["services"]}
             assert "password" not in red
             result = ssh(blue["host"], blue["password"], "sudo -n id -u")
             assert result.returncode == 0, result.stderr

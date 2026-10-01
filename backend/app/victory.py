@@ -1,5 +1,6 @@
 """Continuous BLUE stabilization; issuing a key does not finish the match."""
 import math
+import asyncio
 import time
 from time import monotonic
 from datetime import datetime, timezone
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 from .cases import CaseLoader, CaseSpec
 from .models import Match, MatchEvent, MatchState
 from .red_zone import check_red_defense
-from .runtime import DockerRuntime, DockerRuntimeError
+from shared.arena import ArenaProvider, ArenaError
 
 
 MAX_POLL_GAP = 30
@@ -22,14 +23,14 @@ def _utcnow():
 
 
 class VictoryEngine:
-    def __init__(self, runtime: DockerRuntime, cases_directory: Path = Path("cases")):
-        self.runtime = runtime
+    def __init__(self, provider: ArenaProvider, cases_directory: Path = Path("cases")):
+        self.provider = provider
         self.cases_directory = Path(cases_directory)
         self._match_id = None
         self._started = None
         self._last_success = None
 
-    def poll(self, session: Session, match: Match, case: CaseSpec) -> dict:
+    async def poll(self, session: Session, match: Match, case: CaseSpec) -> dict:
         # ponytail: one controller per match; serialize polls before introducing multiple workers.
         if self._match_id not in (None, match.id):
             raise ValueError("use one VictoryEngine per match")
@@ -52,11 +53,15 @@ class VictoryEngine:
         began = monotonic()
         reason = "CHECK_FAILED"
         try:
-            result = check_red_defense(
-                session, match, case, match.red_key, self.runtime, self.cases_directory,
-            )
+            result = await check_red_defense(session, match, self.provider)
+            if result.get("pending") and (self._last_success is None or monotonic() - self._last_success <= MAX_POLL_GAP):
+                if self._started is not None:
+                    return {"status": "SECURING", "remaining_seconds": max(0, math.ceil(case.blue.stabilization_seconds - (monotonic() - self._started)))}
+                # A restart with persisted securing state must still cancel it.
+                if match.securing_started_at is None:
+                    return {"status": "UNSECURED"}
             eligible = result["blue_eligible"] is True
-        except (DockerRuntimeError, OSError, ValueError, SQLAlchemyError):
+        except (ArenaError, OSError, ValueError, SQLAlchemyError):
             session.rollback()
             eligible, reason = False, "CHECK_ERROR"
         try:
@@ -105,10 +110,10 @@ class VictoryEngine:
         return status
 
 
-def watch_victory(engine, match_id: int, cases_directory: Path = Path("cases"), interval: float = 2):
+async def watch_victory(engine, match_id: int, provider, interval: float = 2, cases_directory: Path = Path("cases")):
     if not 0 < interval < MAX_POLL_GAP:
         raise ValueError(f"interval must be between 0 and {MAX_POLL_GAP} seconds")
-    victory = VictoryEngine(DockerRuntime(cases_directory), cases_directory)
+    victory = VictoryEngine(provider, cases_directory)
     while True:
         with Session(engine) as session:
             match = session.get(Match, match_id)
@@ -119,8 +124,8 @@ def watch_victory(engine, match_id: int, cases_directory: Path = Path("cases"), 
             if not match.case_id:
                 raise ValueError("match has no case")
             case = CaseLoader().load(Path(cases_directory) / match.case_id)
-            result = victory.poll(session, match, case)
+            result = await victory.poll(session, match, case)
             yield result
             if result["status"] in ("BLUE_KEY_ISSUED", "STOPPED"):
                 return
-        time.sleep(interval)
+        await asyncio.sleep(interval)

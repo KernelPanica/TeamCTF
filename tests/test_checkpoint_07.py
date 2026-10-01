@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 from backend.app.cases import CaseLoader
 from backend.app.database import Base, make_engine
 from backend.app.models import Case, Match, MatchState
-from backend.app.provisioning import destroy_arena, provision_arena
-from backend.app.red_zone import RedZoneChecker, check_red_defense
-from backend.app.runtime import DockerRuntime, DockerRuntimeError
+from arena_support import destroy_arena, provision_arena
+from arena.app.checks.red_zone import RedZoneChecker
+from arena_support import check_red_defense
+from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,7 +76,7 @@ def test_probe_contract_and_cleanup(red_arena, monkeypatch, health_code, exploit
 
     runtime._docker.side_effect = docker
     checker = RedZoneChecker(runtime, ROOT / "cases")
-    monkeypatch.setattr("backend.app.red_zone.secrets.token_hex", lambda _: "12345678")
+    monkeypatch.setattr("arena.app.checks.red_zone.secrets.token_hex", lambda _: "12345678")
     result = checker.check(match, CaseLoader().load(ROOT / "cases/web-001"), "secret")
     assert result["surface"] == surface and result["exploit"] == exploit
     create = next(args for args, _ in calls if args[0] == "create")

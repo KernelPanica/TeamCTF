@@ -4,7 +4,7 @@ import secrets
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,9 +16,10 @@ from backend.app.cases import CaseLoader
 from backend.app.database import Base, make_engine
 from backend.app.main import create_app
 from backend.app.models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Team
-from backend.app.provisioning import destroy_arena, provision_arena
-from backend.app.runtime import DockerRuntime, DockerRuntimeError
-from backend.app.victory import VictoryEngine
+from arena_support import destroy_arena, provision_arena
+from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
+from arena_support import VictoryEngine
+from shared.arena import ArenaError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ def victory_arena(tmp_path):
 @pytest.fixture
 def clocked(monkeypatch):
     clock = [0.0]
-    probe = Mock(return_value={"blue_eligible": True})
+    probe = AsyncMock(return_value={"blue_eligible": True})
     monkeypatch.setattr("backend.app.victory.monotonic", lambda: clock[0])
     monkeypatch.setattr("backend.app.victory._utcnow", lambda: datetime(2026, 1, 1) + timedelta(seconds=clock[0]))
     monkeypatch.setattr("backend.app.victory.check_red_defense", probe)
@@ -107,7 +108,7 @@ def test_failure_cancels_and_retry_requires_full_period(victory_arena, clocked, 
     poll(engine, victory_arena)
     clock[0] = 20
     if error:
-        probe.side_effect = DockerRuntimeError("failed")
+        probe.side_effect = ArenaError("failed")
     else:
         probe.return_value = {"blue_eligible": False}
     assert poll(engine, victory_arena)["status"] == "SECURING_CANCELLED"
@@ -241,7 +242,8 @@ def test_real_keys_cancellation_firewall_and_60_second_stabilization(victory_are
                 assert time.monotonic() < deadline, result
             assert time.monotonic() - started >= 60
             assert client.get(endpoint, headers=headers[1]).json()["blue_key"] == match.blue_key
-            assert client.get(endpoint, headers=headers[0]).json() == {"host": match.target_host}
+            assert client.get(endpoint, headers=headers[0]).json() == {
+                "host": match.target_host, "services": [e for e in match.arena_endpoints if e["name"] != "ssh"]}
             assert match.state == MatchState.RUNNING
         assert [e.type for e in timeline(session, match)].count("BLUE_KEY_ISSUED") == 1
     finally:

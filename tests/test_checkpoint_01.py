@@ -56,7 +56,7 @@ def test_migrations_and_models(database):
 
 
 @pytest.mark.parametrize("sql", [
-    "INSERT INTO players (nickname) VALUES ('same'), ('same')",
+    "INSERT INTO players (nickname, active_nickname) VALUES ('same', 'same'), ('same', 'same')",
     "INSERT INTO matches (case_id) VALUES ('missing')",
     "INSERT INTO matches (state) VALUES ('UNKNOWN')",
     "INSERT INTO match_players (match_id, player_id) VALUES (999, 999)",

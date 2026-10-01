@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cyber Range — лобби</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header><a href="/" aria-label="Cyber Range — главная">CR<span> / </span>CYBER RANGE</a><span class="badge">LOCAL ARENA</span></header>
+  <main>
+    <section class="intro" aria-labelledby="title">
+      <p class="eyebrow">RED VS BLUE / 02 : 02</p>
+      <h1 id="title">Атака.<br>Защита.<br><span>Твоя сторона.</span></h1>
+      <p class="description">Исследуй уязвимости или защищай сервис.<br>Четыре игрока. Две команды. Одна арена.</p>
+      <div class="teams" aria-label="Команды матча">
+        <div><span class="red">RED</span><p>Найти уязвимость.<br>Получить ключ.</p></div>
+        <div><span class="blue">BLUE</span><p>Устранить угрозу.<br>Сохранить сервис.</p></div>
+      </div>
+    </section>
+    <section class="lobby" aria-labelledby="lobby-title">
+      <div class="card-top"><span class="dot"></span>ЛОББИ<span class="slot">01 / ВХОД</span></div>
+      <h2 id="lobby-title">Готов к игре?</h2>
+      <p id="hint">Выбери nickname, чтобы войти в лобби.</p>
+      <form id="register">
+        <label for="nickname">Nickname</label>
+        <input id="nickname" name="nickname" minlength="2" maxlength="24" required autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="nickname-help" placeholder="kernelpanica">
+        <p id="nickname-help" class="help">2–24 буквы, цифры, _ или -. Имя должно быть свободно.</p>
+        <button type="submit">Войти в лобби <span aria-hidden="true">↗</span></button>
+      </form>
+      <div id="player-panel" hidden>
+        <div class="identity"><span>ИГРОК</span><strong id="player-name"></strong></div>
+        <div class="queue-state" role="status" aria-live="polite">
+          <p id="state-label">READY</p>
+          <p id="queue-count"></p>
+        </div>
+        <button id="play" type="button">НАЧАТЬ ИГРУ <span aria-hidden="true">→</span></button>
+        <button id="cancel" type="button" hidden>Выйти из очереди</button>
+        <button id="logout" class="secondary" type="button">Сменить nickname</button>
+      </div>
+      <p id="error" role="alert" hidden></p>
+      <div class="card-bottom">Без регистрации и пароля<span aria-hidden="true">■</span></div>
+    </section>
+  </main>
+  <footer><span>CYBER RANGE / ЛОКАЛЬНАЯ CTF-ПЛАТФОРМА</span><span>ИССЛЕДУЙ · АТАКУЙ · ЗАЩИЩАЙ</span></footer>
+</body>
+</html>

@@ -1,8 +1,8 @@
 # TeamCTF
 
-Локальная Red vs Blue CTF-платформа. Реализован Stage 1: backend, SQLite,
-миграции и модели. Stage 2 добавляет формат cases, validator, каталог и CLI.
-Игровой функционал появится в следующих checkpoint.
+Локальная Red vs Blue CTF-платформа. Реализованы backend, cases, Docker arenas,
+SSH-доступ BLUE, проверки защиты, выдача ключа BLUE и веб-лобби.
+Автоматическое создание матчей появится в Stage 10.
 
 ## Запуск
 
@@ -17,6 +17,7 @@ curl --fail http://localhost:8000/health
 Миграции выполняются перед каждым запуском backend; ошибка миграции прерывает
 запуск. SQLite сохраняется в `data/cyberrange.db` и переживает перезапуск.
 Backend доступен только на localhost:8000.
+Откройте http://localhost:8000/ в браузере — здесь находится лобби.
 
 ```bash
 docker compose down
@@ -159,9 +160,9 @@ Docker labels, environment или аргументах команды. Ошиб�
 
 `GET /matches/{id}/access` требует `Authorization: Bearer <player-token>`.
 `issue_player_token(player)` выдаёт случайный токен и сохраняет только SHA-256
-hash в модели Player; вызывающая сторона сохраняет Player в БД. Выдача токена
-через lobby появится в Stage 9; сейчас identity создают controller/tests,
-публичного endpoint для выбора команды или создания матча нет.
+hash в модели Player; вызывающая сторона сохраняет Player в БД. Лобби выдаёт
+токен при выборе nickname; публичного endpoint для выбора команды или
+создания матча нет.
 
 RED получает `{"host":"..."}`. BLUE получает
 `{"host":"...","port":22,"username":"blue","password":"..."}`.
@@ -344,3 +345,39 @@ sudo bash tests/checkpoint_08.sh
 Тест включает реальные 60 секунд непрерывной защиты, отмену при возврате
 exploit и блокировке RED subnet, доступность ключа только BLUE, а также
 regression tests Stage 1–7. Ожидаемый итог — `CHECKPOINT 8 PASSED`.
+
+## Player/Lobby (Stage 9)
+
+После `docker compose up --build -d --wait` откройте http://localhost:8000/.
+Выберите nickname и нажмите «НАЧАТЬ ИГРУ»: появится `SEARCHING FOR MATCH`
+и количество ожидающих игроков. «Выйти из очереди» отменяет поиск,
+«Сменить nickname» завершает сессию. Создание матчей относится к Stage 10.
+
+Nickname содержит 2–24 буквы, цифры, `_` или `-`. Активные имена уникальны
+без учёта регистра и после Unicode-нормализации. Сессия живёт 15 минут после
+последнего обращения к лобби; открытая страница обновляет её каждые 5 секунд.
+После выхода или истечения сессии имя освобождается, история игрока сохраняется.
+Токен хранится в sessionStorage вкладки, в БД — только его hash. Перезагрузка
+страницы сохраняет сессию. Для независимых игроков используйте отдельные
+профили браузера. Очередь хранится в SQLite и переживает перезапуск backend.
+
+API: `POST /lobby/session` принимает `{"nickname":"pilot"}` и выдаёт токен;
+`GET /lobby/session` возвращает статус и продлевает сессию;
+`DELETE /lobby/session` завершает её; `POST`/`DELETE /lobby/queue` входят
+в очередь и выходят из неё. Все запросы после создания сессии требуют Bearer token.
+
+Полная проверка этапов 1–9 включает Docker и четыре независимые сессии Chromium.
+Однократная подготовка (браузер устанавливается для пользователя, запускающего тесты):
+
+```bash
+.venv/bin/pip install -e '.[test,browser]'
+sudo .venv/bin/python -m playwright install chromium
+sudo bash tests/checkpoint_09.sh
+```
+
+Ожидаемый итог — `CHECKPOINT 9 PASSED`. Только браузерная проверка без Docker:
+
+```bash
+.venv/bin/python -m playwright install chromium
+RUN_BROWSER=1 .venv/bin/python -m pytest tests/test_checkpoint_09.py -q -p no:cacheprovider
+```

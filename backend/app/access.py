@@ -1,6 +1,7 @@
-"""Minimal player identity and team-scoped arena access; lobby comes in Stage 9."""
+"""Shared player authentication and team-scoped arena access."""
 import hashlib
 import secrets
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -22,6 +23,17 @@ def issue_player_token(player: Player) -> str:
     return token
 
 
+def authenticated_player(session: Session, credentials: HTTPAuthorizationCredentials | None) -> Player:
+    if credentials is None:
+        raise HTTPException(401, "Player token required", headers={"WWW-Authenticate": "Bearer"})
+    token_hash = hashlib.sha256(credentials.credentials.encode()).hexdigest()
+    player = session.scalar(select(Player).where(Player.token_hash == token_hash))
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if player is None or (player.session_expires_at is not None and player.session_expires_at <= now):
+        raise HTTPException(401, "Invalid player token", headers={"WWW-Authenticate": "Bearer"})
+    return player
+
+
 class ArenaAccess(BaseModel):
     host: str
     port: int | None = None
@@ -35,13 +47,8 @@ def get_access(
     match_id: int, request: Request, response: Response,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ):
-    if credentials is None:
-        raise HTTPException(401, "Player token required", headers={"WWW-Authenticate": "Bearer"})
-    token_hash = hashlib.sha256(credentials.credentials.encode()).hexdigest()
     with Session(request.app.state.engine) as session:
-        player = session.scalar(select(Player).where(Player.token_hash == token_hash))
-        if player is None:
-            raise HTTPException(401, "Invalid player token", headers={"WWW-Authenticate": "Bearer"})
+        player = authenticated_player(session, credentials)
         member = session.get(MatchPlayer, (match_id, player.id))
         if member is None or member.team not in (Team.RED, Team.BLUE):
             raise HTTPException(404, "Match not found")

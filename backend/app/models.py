@@ -25,8 +25,11 @@ class Team(StrEnum):
 class Player(Base):
     __tablename__ = "players"
     id: Mapped[int] = mapped_column(primary_key=True)
-    nickname: Mapped[str] = mapped_column(String, unique=True)
+    nickname: Mapped[str] = mapped_column(String)
     token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    active_nickname: Mapped[str | None] = mapped_column(String, unique=True, index=True)
+    session_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class Case(Base):

@@ -659,6 +659,21 @@ BLUE_KEY_ISSUED
 
 ## CHECKPOINT 8
 
+**Статус: completed (2026-10-01).**
+
+- Миграция 0003 добавляет ключи матча, начало SECURING и время выдачи BLUE_KEY.
+  RED_KEY генерируется и записывается в target при provisioning через stdin;
+  BLUE_KEY остаётся в backend. Ошибка provisioning и cleanup удаляют ключи.
+- `VictoryEngine.poll` / `cyberrange victory watch` используют все проверки
+  Stage 7, монотонный отсчёт, отмену при неуспехе и повторную стабилизацию
+  после restart или перерыва более 30 секунд. События сохраняются без ключей.
+- API выдаёт `blue_key` только участникам BLUE после завершения стабилизации.
+  Выдача не завершает матч; key submission относится к Stage 12.
+- Пользователь выполнил `sudo bash tests/checkpoint_08.sh`:
+  **141 passed**, `CHECKPOINT 8 PASSED` (включая regression tests Stage 1–7).
+- Подтверждены реальные 60 секунд защиты, отмена при возврате exploit
+  и firewall block, генерация ключей и доступ к BLUE_KEY только для BLUE.
+
 Проверить:
 
 ```text

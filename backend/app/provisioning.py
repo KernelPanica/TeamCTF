@@ -42,6 +42,16 @@ def provision_arena(session: Session, match: Match, case: CaseSpec, runtime: Doc
         runtime.prepare(match, case)
         prepared = True
         target = runtime.start(match)
+        match.red_key = "RED_" + secrets.token_urlsafe(32)
+        match.blue_key = "BLUE_" + secrets.token_urlsafe(32)
+        match.securing_started_at = match.blue_key_issued_at = None
+        runtime._docker(
+            "exec", "--interactive", target["Id"], "python3", "-c",
+            "import pathlib,sys; p=pathlib.Path(sys.argv[1]); "
+            "p.parent.mkdir(parents=True, exist_ok=True); "
+            "p.write_bytes(sys.stdin.buffer.read()); p.chmod(0o444)",
+            case.red.objective_path, stdin=match.red_key,
+        )
         password = secrets.token_urlsafe(32)
         runtime._docker("exec", "--interactive", target["Id"], "chpasswd", stdin=f"blue:{password}\n")
         networks = target["NetworkSettings"]["Networks"]
@@ -54,6 +64,8 @@ def provision_arena(session: Session, match: Match, case: CaseSpec, runtime: Doc
     except Exception as exc:
         session.rollback()
         match.target_host = match.blue_password = None
+        match.red_key = match.blue_key = None
+        match.securing_started_at = match.blue_key_issued_at = None
         transition(match, MatchState.FAILED)
         session.commit()
         if prepared:
@@ -67,5 +79,7 @@ def provision_arena(session: Session, match: Match, case: CaseSpec, runtime: Doc
 def destroy_arena(session: Session, match: Match, runtime: DockerRuntime) -> None:
     # Revoke API access even if Docker is unavailable; cleanup errors remain visible.
     match.target_host = match.blue_password = None
+    match.red_key = match.blue_key = None
+    match.securing_started_at = match.blue_key_issued_at = None
     session.commit()
     runtime.destroy(match)

@@ -10,7 +10,6 @@ RUN useradd --create-home --shell /bin/bash blue \
     && chmod 0755 /etc/init.d/cyberrange-web /opt/service/start.sh \
     && cp /opt/service/sshd_config /etc/ssh/sshd_config \
     && rm -f /etc/ssh/ssh_host_* \
-    && mkdir -p /opt/objective /run/sshd \
-    && printf 'stage-2-test-objective' > /opt/objective/red-key
+    && mkdir -p /opt/objective /run/sshd
 EXPOSE 22 80
 CMD ["/opt/service/start.sh"]

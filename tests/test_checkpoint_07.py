@@ -136,7 +136,7 @@ def test_stop_firewall_and_valid_patch(red_arena):
         deadline = time.monotonic() + 15
         while True:
             result = check_red_defense(
-                session, match, case, "stage-2-test-objective", runtime, ROOT / "cases"
+                session, match, case, match.red_key, runtime, ROOT / "cases"
             )
             if result["health"]["status"] == "HEALTHY" and (
                 expected_surface is None or result["red_zone"]["surface"] == expected_surface
@@ -155,7 +155,7 @@ def test_stop_firewall_and_valid_patch(red_arena):
         # A: stopping the required service fails both contracts.
         runtime._docker("exec", target_data["Id"], "service", "cyberrange-web", "stop")
         result = check_red_defense(
-            session, match, case, "stage-2-test-objective", runtime, ROOT / "cases"
+            session, match, case, match.red_key, runtime, ROOT / "cases"
         )
         assert result["health"]["status"] == "UNHEALTHY"
         assert result["red_zone"]["surface"] == "UNAVAILABLE"
@@ -176,7 +176,7 @@ def test_stop_firewall_and_valid_patch(red_arena):
             "-s", ipam["Subnet"], "--dport", "80", "-j", "DROP",
         )
         result = check_red_defense(
-            session, match, case, "stage-2-test-objective", runtime, ROOT / "cases"
+            session, match, case, match.red_key, runtime, ROOT / "cases"
         )
         assert result["health"]["status"] == "HEALTHY"
         assert result["red_zone"]["surface"] == "UNAVAILABLE"

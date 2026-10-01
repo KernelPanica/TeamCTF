@@ -94,13 +94,13 @@ Cases устанавливает оператор: это доверенный �
 на следующих checkpoint. При валидации код cases не запускается.
 
 Тестовый web-001 намеренно позволяет `/download?path=...` читать файлы target.
-Его статический objective `stage-2-test-objective` служит только fixture Stage 2;
-ключи матча будут генерироваться controller'ом в Stage 8. `/` должен возвращать
+С Stage 8 objective генерируется controller'ом для каждого матча и записывается
+при provisioning; статического ключа в образе нет. `/` должен возвращать
 `Cyber Range file service` с переводом строки. Checkers запускаются снаружи:
 
 ```bash
 python cases/web-001/checks/health.py http://target:80
-python cases/web-001/checks/exploit.py http://target:80 stage-2-test-objective
+python cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
 ```
 
 Для health код 0 означает здоровый сервис, остальные — неуспех проверки.
@@ -240,8 +240,8 @@ sudo bash tests/checkpoint_05.sh
 `checks.exploit` на controller отдельным Python-процессом (timeout 5 секунд).
 Первый required service служит сетевой точкой входа exploit этого case.
 URL передаётся аргументом, ожидаемый objective — через stdin, без вывода в
-логи или аргументы процесса. Значение objective передаёт controller;
-до Stage 8 тестовый case использует `stage-2-test-objective`.
+логи или аргументы процесса. Значение objective передаёт controller из
+`Match.red_key`, созданного при provisioning.
 
 Exit-контракт exploit scripts: 0 = VULNERABLE, 10 = PATCHED,
 11 = UNREACHABLE, остальные = ERROR. Timeout и ошибка запуска также дают
@@ -253,12 +253,13 @@ ERROR: обычный Python crash с exit 1 не считается испра�
 `check_defense(session, match, case, expected_key, cases_directory)` возвращает
 health, exploit и предварительный `blue_eligible`: true только при RUNNING,
 HEALTHY и PATCHED. Это проверка допуска Stage 6, не выдача ключа или победа:
-проверка из RED-зоны и stabilization добавляются в Stage 7–8.
+проверка из RED-зоны и stabilization реализованы отдельно в Stage 7–8.
 
-Пример ручной проверки fixture (код 10 для PATCHED — нормальный результат):
+Пример ручной проверки с ожидаемым ключом без перевода строки в файле
+(код 10 для PATCHED — нормальный результат):
 
 ```bash
-printf '%s' 'stage-2-test-objective' | python cases/web-001/checks/exploit.py http://target:80
+python cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
 ```
 
 Полная проверка этапов 1–6 на хосте:
@@ -296,3 +297,50 @@ sudo bash tests/checkpoint_07.sh
 Тест проверяет три сценария: остановленный сервис; controller health доступен,
 но RED subnet заблокирован firewall; сервис доступен из RED-зоны после
 устранения unsafe route. Ожидаемый итог — `CHECKPOINT 7 PASSED`.
+
+## Victory Engine (Stage 8)
+
+При provisioning controller генерирует независимые RED_KEY и BLUE_KEY с
+256 битами случайности. RED_KEY передаётся через stdin и записывается по
+`red.objective_path` только в текущем target. BLUE_KEY остаётся в SQLite;
+в image, target, Docker metadata и timeline его нет. Cleanup и ошибка
+provisioning удаляют оба ключа из записи матча.
+
+Для RUNNING-матча на controller-хосте:
+
+```bash
+.venv/bin/cyberrange victory watch 42
+```
+
+Команда каждые 2 секунды после завершения предыдущего poll проверяет controller
+health, RED surface и exploit через `check_red_defense`. Первый успешный poll
+начинает SECURING. После `blue.stabilization_seconds` (60 для web-001) и
+успешного завершающего poll выдаётся BLUE_KEY. Любой неуспех или ошибка
+checker отменяет попытку; следующий успех начинает полный отсчёт заново.
+
+На матч нужен один экземпляр watcher. Отсчёт идёт по монотонным часам;
+перезапуск controller, перерыв между успешными проверками более 30 секунд
+или probe длительностью более 30 секунд сбрасывают попытку. Пропущенный
+интервал не засчитывается. `--interval` меняет паузу между poll (0 < interval < 30).
+Наблюдение дискретное: изменения между poll нельзя обнаружить без следующей
+проверки. После выдачи ключ сохраняет силу до окончания/cleanup матча.
+
+Состояние и выдача сохраняются в БД; timeline получает BLUE_SECURING_STARTED,
+BLUE_SECURING_CANCELLED, BLUE_SECURED_TARGET и BLUE_KEY_ISSUED без значений ключей.
+`GET /matches/{id}/access` добавляет поле `blue_key` только для BLUE и только
+после выдачи. RED не получает ни один ключ через этот endpoint. CLI выводит
+статус и оставшееся время, без ключей. Выдача не завершает матч; submit и
+определение победителя относятся к Stage 12.
+
+Примените миграции через `.venv/bin/alembic upgrade head` или перезапуск
+пересобранного Compose backend. Старые активные arenas без ключей нужно
+очистить и создать заново: engine не выдаёт им ключ задним числом.
+Полная проверка этапов 1–8:
+
+```bash
+sudo bash tests/checkpoint_08.sh
+```
+
+Тест включает реальные 60 секунд непрерывной защиты, отмену при возврате
+exploit и блокировке RED subnet, доступность ключа только BLUE, а также
+regression tests Stage 1–7. Ожидаемый итог — `CHECKPOINT 8 PASSED`.

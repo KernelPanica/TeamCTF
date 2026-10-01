@@ -27,6 +27,7 @@ class ArenaAccess(BaseModel):
     port: int | None = None
     username: str | None = None
     password: str | None = Field(default=None, repr=False)
+    blue_key: str | None = Field(default=None, repr=False)
 
 
 @router.get("/matches/{match_id}/access", response_model=ArenaAccess, response_model_exclude_none=True)
@@ -49,5 +50,8 @@ def get_access(
             raise HTTPException(409, "Arena access is unavailable")
         response.headers["Cache-Control"] = "no-store"
         if member.team == Team.BLUE:
-            return ArenaAccess(host=match.target_host, port=22, username="blue", password=match.blue_password)
+            return ArenaAccess(
+                host=match.target_host, port=22, username="blue", password=match.blue_password,
+                blue_key=match.blue_key if match.blue_key_issued_at is not None else None,
+            )
         return ArenaAccess(host=match.target_host)

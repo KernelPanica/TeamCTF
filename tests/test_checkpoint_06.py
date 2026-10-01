@@ -147,7 +147,7 @@ def test_real_target_vulnerable_patched_and_stopped(exploit_arena):
     def check_ready():
         deadline = time.monotonic() + 10
         while True:
-            result = check_defense(session, match, case, "stage-2-test-objective", ROOT / "cases")
+            result = check_defense(session, match, case, match.red_key, ROOT / "cases")
             if result["health"]["status"] == "HEALTHY":
                 return result
             assert time.monotonic() < deadline, "web did not become healthy"
@@ -167,7 +167,7 @@ def test_real_target_vulnerable_patched_and_stopped(exploit_arena):
         result = check_ready()
         assert result["exploit"] == "PATCHED" and result["blue_eligible"] is True
         runtime._docker("exec", target["Id"], "service", "cyberrange-web", "stop")
-        result = check_defense(session, match, case, "stage-2-test-objective", ROOT / "cases")
+        result = check_defense(session, match, case, match.red_key, ROOT / "cases")
         assert result["exploit"] == "UNREACHABLE"
         assert result["health"]["status"] == "UNHEALTHY" and result["blue_eligible"] is False
     finally:

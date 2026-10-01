@@ -45,6 +45,10 @@ class Match(Base):
     case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"))
     target_host: Mapped[str | None]
     blue_password: Mapped[str | None]
+    red_key: Mapped[str | None]
+    blue_key: Mapped[str | None]
+    securing_started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    blue_key_issued_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class MatchPlayer(Base):

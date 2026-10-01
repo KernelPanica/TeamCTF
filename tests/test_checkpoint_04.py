@@ -114,12 +114,18 @@ def test_provisioning_uses_private_stdin_and_cleans_failure(arena_db, monkeypatc
         with pytest.raises(DockerRuntimeError):
             provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
         assert match.state == MatchState.FAILED and match.blue_password is None
+        assert match.red_key is None and match.blue_key is None
         runtime.destroy.assert_called_once_with(match)
     else:
         provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
         assert match.state == MatchState.RUNNING and len(match.blue_password) >= 40
         assert runtime._docker.call_args.args == ("exec", "--interactive", "target", "chpasswd")
         assert runtime._docker.call_args.kwargs == {"stdin": f"blue:{match.blue_password}\n"}
+        objective_call = runtime._docker.call_args_list[0]
+        assert objective_call.kwargs == {"stdin": match.red_key}
+        assert objective_call.args[-1] == "/opt/objective/red-key"
+        assert match.red_key not in str(objective_call.args)
+        assert match.blue_key not in str(runtime._docker.call_args_list)
 
 
 def test_private_stdin_not_in_errors(monkeypatch):
@@ -213,6 +219,7 @@ def test_blue_ssh_sudo_firewall_and_revocation(arena_db, tmp_path):
             assert result.returncode == 0, result.stderr
             wait_for_web(blue["host"])
             old_host, old_password = blue["host"], blue["password"]
+            old_red_key, old_blue_key = match.red_key, match.blue_key
             destroy_arena(session, match, runtime)
             assert client.get(endpoint, headers=auth(tokens[1])).status_code == 409
             assert ssh(old_host, old_password, "true").returncode != 0
@@ -222,6 +229,7 @@ def test_blue_ssh_sudo_firewall_and_revocation(arena_db, tmp_path):
         try:
             provision_arena(session, second, case, runtime)
             assert second.blue_password != old_password
+            assert second.red_key != old_red_key and second.blue_key != old_blue_key
             result = ssh(second.target_host, second.blue_password, "sudo -n id -u", "second_known_hosts")
             assert result.returncode == 0, result.stderr
             assert result.stdout.strip() == "0"

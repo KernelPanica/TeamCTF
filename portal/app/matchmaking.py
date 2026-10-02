@@ -14,6 +14,7 @@ from .models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Te
 from .provisioning import provision_arena, destroy_arena
 from .states import transition
 from .victory import VictoryEngine
+from .observations import collect_observations
 
 
 TERMINAL = (MatchState.FINISHED, MatchState.FAILED)
@@ -75,8 +76,10 @@ async def run_assigned(engine, provider, match_id, directory):
             victory = VictoryEngine(provider, directory)
             while True:
                 result = await victory.poll(session, match, case)
-                if result["status"] in ("STOPPED", "BLUE_KEY_ISSUED"):
+                if result["status"] == "STOPPED":
                     break
+                if result["status"] == "BLUE_KEY_ISSUED":
+                    await collect_observations(session, match, provider)
                 await asyncio.sleep(2)
             return True
         except ArenaError:
@@ -127,7 +130,7 @@ async def matchmaker(engine, provider, directory):
                 with Session(engine) as session:
                     pending = session.scalars(select(Match.id).where(
                         Match.state.in_((MatchState.PROVISIONING, MatchState.RUNNING)),
-                        Match.blue_key_issued_at.is_(None), Match.seed.is_not(None),
+                        Match.seed.is_not(None),
                     )).all()
                 for match_id in pending:
                     if match_id not in jobs:

@@ -4,7 +4,8 @@ import secrets
 from uuid import uuid4
 
 from shared.arena import ArenaError, ArenaProvider, CreateMatch
-from .models import Case, MatchState
+from .models import Case, MatchState, MatchEvent
+from sqlalchemy import select
 from .states import transition
 
 
@@ -59,6 +60,8 @@ async def provision_arena(session, match, case, provider: ArenaProvider):
     match.arena_endpoints = [e.model_dump() for e in status.endpoints]
     match.arena_instance_id = str(status.instance_id)
     transition(match, MatchState.RUNNING)
+    session.add_all([MatchEvent(match_id=match.id, type=kind, timestamp=match.started_at)
+                     for kind in ("TARGET_STARTED", "MATCH_STARTED")])
     session.commit()
 
 
@@ -73,4 +76,7 @@ async def destroy_arena(session, match, provider: ArenaProvider):
         raise ArenaError("ARENA_NOT_CONFIGURED")
     await provider.destroy_match(match.id)
     match.arena_cleanup_pending = False
+    if session.scalar(select(MatchEvent.id).where(
+            MatchEvent.match_id == match.id, MatchEvent.type == "ARENA_DESTROYED")) is None:
+        session.add(MatchEvent(match_id=match.id, type="ARENA_DESTROYED"))
     session.commit()

@@ -31,6 +31,7 @@ class ServiceHealth(WireModel):
 
 
 class Observation(WireModel):
+    blue_login_seen: bool = False
     health: dict[str, ServiceHealth] = Field(max_length=100)
     exploit: Literal["VULNERABLE", "PATCHED", "UNREACHABLE", "ERROR"]
     surface: Literal["AVAILABLE", "UNAVAILABLE"]

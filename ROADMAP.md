@@ -1685,6 +1685,23 @@ ARENA_DESTROYED
 
 ## CHECKPOINT 13
 
+**Статус: completed (2026-10-02).**
+
+- Добавлены TARGET_STARTED/MATCH_STARTED, TARGET_HEALTHY, BLUE_FIRST_LOGIN,
+  EXPLOIT_AVAILABLE/BLOCKED/RESTORED и подтверждённый ARENA_DESTROYED.
+  Существующие service, securing, key submission и finish events сохранены.
+- Portal записывает время получения наблюдения; Arena timestamp используется
+  для проверки свежести. ERROR/UNREACHABLE не считаются блокировкой exploit.
+- Наблюдение продолжается после выдачи BLUE_KEY до конца матча. Cleanup и
+  первые события идемпотентны; секреты и текст SSH-логов не сохраняются в timeline.
+- BLUE_FIRST_LOGIN — недоверенное сообщение из SSH-лога target, без доказательства
+  личности и без влияния на правила игры. Проверяются успешный SSH и оба provider.
+- `GET /matches/{id}/events?after=0&limit=100`: авторизация участника, страницы
+  до 500 событий по ID, UTC timestamps; сырые ARENA_OBSERVATION не выдаются.
+- Проверка: `sudo bash tests/checkpoint_13.sh` на изолированном Docker-хосте.
+- Локальная полная регрессия: **178 passed, 9 Docker skipped**, включая Chromium.
+- Пользователь подтвердил **187 passed**, `CHECKPOINT 13 PASSED` на Docker-хосте.
+
 После тестового матча timeline должен полностью восстанавливать основные события игры в хронологическом порядке.
 
 Все timestamps должны рассчитываться server-side.

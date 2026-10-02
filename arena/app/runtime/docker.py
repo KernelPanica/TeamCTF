@@ -34,7 +34,7 @@ class DockerRuntime:
         return str(match.id)
 
     @staticmethod
-    def _docker(*args: str, timeout: int = 60, stdin: str | None = None) -> str:
+    def _docker(*args: str, timeout: int = 60, stdin: str | None = None, include_stderr=False) -> str:
         try:
             result = subprocess.run(
                 ["docker", *args], capture_output=True, text=True, timeout=timeout, input=stdin,
@@ -44,7 +44,19 @@ class DockerRuntime:
         if result.returncode:
             detail = "command with private stdin failed" if stdin is not None else result.stderr.strip()
             raise DockerRuntimeError(f"docker {args[0]} failed: {detail}")
-        return result.stdout.strip()
+        return (result.stdout + (result.stderr if include_stderr else "")).strip()
+
+    def blue_login_seen(self, match):
+        """Target-reported SSH evidence, never an authorization or victory signal."""
+        if not match.blue_login_seen:
+            try:
+                targets = self._resources("container", self._match_id(match), "target")
+                if targets:
+                    logs = self._docker("logs", "--tail", "200", targets[0], timeout=5, include_stderr=True)
+                    match.blue_login_seen = any("Accepted password for blue from " in line for line in logs.splitlines())
+            except DockerRuntimeError:
+                pass  # Missing telemetry must not change health/exploit decisions.
+        return match.blue_login_seen
 
     def _resources(self, kind: str, match_id: str, role=None) -> list[str]:
         args = [kind, "ls", "--quiet"]

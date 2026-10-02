@@ -203,9 +203,13 @@ def test_blue_ssh_sudo_firewall_and_revocation(arena_db, tmp_path):
             red = client.get(endpoint, headers=auth(tokens[0])).json()
             assert red == {"host": blue["host"], "services": blue["services"]}
             assert "password" not in red
+            from arena.app.runtime.context import RuntimeMatch
+            observed = RuntimeMatch(match.id)
+            assert not runtime.blue_login_seen(observed)
             result = ssh(blue["host"], blue["password"], "sudo -n id -u")
             assert result.returncode == 0, result.stderr
             assert result.stdout.strip() == "0"
+            assert runtime.blue_login_seen(observed)
             assert ssh(blue["host"], "wrong-password", "true").returncode != 0
             wait_for_web(blue["host"])
             result = ssh(blue["host"], blue["password"], "iptables --version && ip6tables --version")

@@ -7,3 +7,4 @@ class RuntimeMatch:
     case_id: str | None = None
     target_host: str | None = None
     state: str = "RUNNING"
+    blue_login_seen: bool = False

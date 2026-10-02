@@ -63,6 +63,7 @@ class Executor:
         red = RedZoneChecker(self.runtime, self.cases_directory).check(match, case, red_key)
         return Observation(health=health, exploit=exploit, surface=red["surface"],
                            red_exploit=red["exploit"], red_services=red["services"],
+                           blue_login_seen=self.runtime.blue_login_seen(match),
                            duration_seconds=time.monotonic() - began)
 
     def destroy(self, match_id):

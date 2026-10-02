@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import update
+from sqlalchemy import update, select
 
 from shared.arena import ArenaError
 from .health import record_health
@@ -33,10 +33,32 @@ async def collect_observations(session, match, provider):
             raise ArenaError("EVENT_GAP")
         observation = event.observation
         now = datetime.now(timezone.utc)
+        timestamp = now.replace(tzinfo=None)
         age = (now - event.timestamp).total_seconds()
         health = record_health(session, match,
             {name: value.model_dump() for name, value in observation.health.items()},
-            min(now, event.timestamp).astimezone(timezone.utc).replace(tzinfo=None))
+            timestamp)
+        def first(kind, metadata=None):
+            if session.scalar(select(MatchEvent.id).where(
+                    MatchEvent.match_id == match.id, MatchEvent.type == kind).limit(1)) is None:
+                session.add(MatchEvent(match_id=match.id, type=kind, timestamp=timestamp,
+                                       event_metadata=metadata or {}))
+
+        if observation.health and health["status"] == "HEALTHY":
+            first("TARGET_HEALTHY")
+        if observation.blue_login_seen:
+            first("BLUE_FIRST_LOGIN", {"source": "target_ssh_log", "verified_identity": False})
+        # ERROR/UNREACHABLE never count as a blocked exploit. Compare the last
+        # conclusive RED-zone result, so recovery from a checker error is not a fix.
+        if observation.red_exploit in ("VULNERABLE", "PATCHED"):
+            previous = session.scalar(select(MatchEvent).where(MatchEvent.match_id == match.id,
+                MatchEvent.type.in_(("EXPLOIT_AVAILABLE", "EXPLOIT_BLOCKED", "EXPLOIT_RESTORED")))
+                .order_by(MatchEvent.id.desc()).limit(1))
+            blocked = observation.red_exploit == "PATCHED"
+            if previous is None or blocked != (previous.type == "EXPLOIT_BLOCKED"):
+                kind = "EXPLOIT_BLOCKED" if blocked else "EXPLOIT_RESTORED" if previous else "EXPLOIT_AVAILABLE"
+                session.add(MatchEvent(match_id=match.id, type=kind, timestamp=timestamp,
+                                       event_metadata={"source": "red_zone_checker"}))
         session.add(MatchEvent(match_id=match.id, type="ARENA_OBSERVATION",
             event_metadata={"run_id": match.arena_run_id, "sequence": event.sequence,
                             "observation": observation.model_dump(mode="json")}))

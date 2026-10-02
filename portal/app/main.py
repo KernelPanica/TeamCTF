@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from .database import make_engine
 from .access import router as access_router
 from .lobby import router as lobby_router
+from .submission import router as submission_router
 from .arena_provider import configured_provider
 from .arena_reconcile import reconcile_forever
 from .matchmaking import matchmaker
@@ -55,6 +56,7 @@ def create_app(database_url=None, arena_provider=None, cases_directory=None):
     app = FastAPI(lifespan=lifespan)
     app.include_router(access_router)
     app.include_router(lobby_router)
+    app.include_router(submission_router)
     frontend = Path(__file__).resolve().parents[1] / "frontend"
     app.mount("/static", StaticFiles(directory=frontend), name="static")
 

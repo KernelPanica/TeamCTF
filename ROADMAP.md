@@ -1596,6 +1596,20 @@ MATCH_ALREADY_FINISHED
 
 ## CHECKPOINT 12
 
+**Статус: completed (2026-10-02).**
+
+- `POST /matches/{id}/submit`: авторизация участника, ключ своей команды,
+  BLUE_KEY только после выдачи; INVALID / RED_WIN / BLUE_WIN / MATCH_ALREADY_FINISHED.
+- SQLite-транзакция фиксирует ровно одного победителя, finished_at и события,
+  отзывает реквизиты и сохраняет cleanup intent. Миграция 0008 сохраняет результат.
+- UI отправляет ключ в JSON, показывает ошибки и победителя всем участникам;
+  refresh сохраняет результат. Reconciler повторяет cleanup без отмены победы.
+- Проверки: оба победителя, неверные/чужие/невыданные ключи, гонка запросов,
+  restart, потеря Arena, четыре Chromium-сессии, отсутствие ключей в событиях.
+- Host-проверка с удалением настоящей арены: `sudo bash tests/checkpoint_12.sh`.
+- Локальная полная регрессия: **174 passed, 9 Docker skipped**, включая Chromium.
+- Пользователь подтвердил **183 passed**, `CHECKPOINT 12 PASSED` на Docker-хосте.
+
 Проверить:
 
 ```text

@@ -1,6 +1,6 @@
 """Reconcile lost arenas and retry requested cleanup without consuming events."""
 import asyncio
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, update
 from sqlalchemy.orm import Session
 
 from shared.arena import ArenaError
@@ -9,16 +9,14 @@ from .provisioning import destroy_arena
 
 
 def mark_lost(session, match):
-    session.refresh(match)
-    if match.state not in (MatchState.RUNNING, MatchState.PROVISIONING):
-        return
-    match.state = MatchState.FAILED
-    match.target_host = match.blue_password = None
-    match.red_key = match.blue_key = None
-    match.arena_endpoints = None
-    match.securing_started_at = match.blue_key_issued_at = None
-    match.arena_cleanup_pending = True
+    # A submission may have finished the match while Arena status was in flight.
+    session.execute(update(Match).where(Match.id == match.id,
+        Match.state.in_((MatchState.RUNNING, MatchState.PROVISIONING))).values(
+        state=MatchState.FAILED, target_host=None, blue_password=None, red_key=None,
+        blue_key=None, arena_endpoints=None, securing_started_at=None,
+        blue_key_issued_at=None, arena_cleanup_pending=True))
     session.commit()
+    session.refresh(match)
 
 
 async def reconcile_once(engine, provider):

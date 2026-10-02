@@ -25,6 +25,10 @@ function render(state) {
   }
   activeMatch = running ? state.match.id : null;
   $('game').hidden = !running;
+  $('submit-key').disabled = !running || busy;
+  $('match-result').hidden = !state?.match?.winner;
+  $('match-result').textContent = state?.match?.winner ? `WINNER: ${state.match.winner}` : '';
+  if (!state?.match) $('submission-result').textContent = '';
   clock = running && state.match.elapsed_seconds !== null
     ? { seconds: state.match.elapsed_seconds, received: performance.now() } : null;
   tick();
@@ -52,6 +56,7 @@ function render(state) {
     $('match-allies').textContent = match.allies.map(player => player.nickname).join(', ');
     $('hint').textContent = match.state === 'FAILED'
       ? 'Не удалось подготовить арену. Можно начать поиск снова.'
+      : match.state === 'FINISHED' ? 'Матч завершён. Можно начать новую игру.'
       : match.state === 'RUNNING' ? 'Арена готова.' : 'Подготавливаем арену. Дождись запуска.';
   }
 }
@@ -129,6 +134,7 @@ async function action(work) {
   } finally {
     busy = false;
     document.querySelectorAll('button:not(#submit-key)').forEach(button => { button.disabled = false; });
+    $('submit-key').disabled = !activeMatch;
   }
 }
 
@@ -152,8 +158,20 @@ $('logout').addEventListener('click', () => action(async () => {
   $('nickname').focus();
 }));
 render(null);
-// Stage 12 will enable authoritative key submission; never put a key in the URL.
-$('key-form').addEventListener('submit', event => event.preventDefault());
+$('key-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (!activeMatch) return;
+  action(async () => {
+    const result = await api(`/matches/${activeMatch}/submit`, 'POST', { key: $('key').value });
+    $('key').value = '';
+    $('submission-result').textContent = {
+      INVALID: 'Неверный ключ. Матч продолжается.',
+      RED_WIN: 'RED WIN', BLUE_WIN: 'BLUE WIN',
+      MATCH_ALREADY_FINISHED: 'Матч уже завершён.',
+    }[result.result];
+    await refresh();
+  });
+});
 setInterval(tick, 1000);
 if (token) action(refresh);
 setInterval(() => {

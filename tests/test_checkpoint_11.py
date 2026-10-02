@@ -119,7 +119,7 @@ def test_red_blue_game_screens_refresh_and_revocation(lobby_db, tmp_path):
                     expect(page.locator('#target-host')).to_have_text('192.0.2.2')
                     expect(page.locator('#target-services')).to_contain_text('30003')
                     expect(page.locator('#match-time')).to_have_text(re.compile(r'01:01:\d{2}'))
-                    expect(page.locator('#submit-key')).to_be_disabled()
+                    expect(page.locator('#submit-key')).to_be_enabled()
                     pages.append(page)
                     accesses[page] = responses
                 assert len({p.locator('#match-id').inner_text() for p in pages}) == 1

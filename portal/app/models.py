@@ -47,6 +47,7 @@ class Match(Base):
     )
     case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"))
     seed: Mapped[int | None] = mapped_column(BigInteger)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
     target_host: Mapped[str | None]
     blue_password: Mapped[str | None]
     red_key: Mapped[str | None]

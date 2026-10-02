@@ -52,7 +52,10 @@ def snapshot(session: Session, player: Player, now: datetime) -> dict:
             Player.id != player.id,
         ).order_by(Player.id)).all()
         result["match"] = {"id": match.id, "case_id": match.case_id, "state": match.state,
-                           "team": member.team, "allies": [{"id": p.id, "nickname": p.nickname} for p in allies]}
+                           "team": member.team, "allies": [{"id": p.id, "nickname": p.nickname} for p in allies],
+                           "started_at": match.started_at.isoformat() + "Z" if match.started_at else None,
+                           "elapsed_seconds": max(0, (now - match.started_at).total_seconds())
+                           if match.started_at and match.state == "RUNNING" else None}
         if match.state not in TERMINAL:
             result["status"] = "MATCHED"
     return result

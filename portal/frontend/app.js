@@ -2,11 +2,35 @@ const $ = (id) => document.getElementById(id);
 const storageKey = 'cyberrange.player-token';
 let token = sessionStorage.getItem(storageKey);
 let busy = false;
+let activeMatch = null;
+let clock = null;
+
+function clearAccess() {
+  $('target-info').hidden = $('admin-access').hidden = $('issued-key').hidden = true;
+  for (const id of ['target-host', 'target-services', 'ssh-command', 'ssh-password', 'blue-key']) $(id).textContent = '';
+}
+
+function tick() {
+  const seconds = clock ? Math.floor(clock.seconds + (performance.now() - clock.received) / 1000) : null;
+  $('match-time').textContent = seconds === null ? '—' : [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+    .map(value => String(value).padStart(2, '0')).join(':');
+}
 
 function render(state) {
+  const running = state?.match?.state === 'RUNNING';
+  document.body.classList.toggle('playing', running);
+  if (!running || activeMatch !== state.match.id) {
+    clearAccess();
+    $('key').value = '';
+  }
+  activeMatch = running ? state.match.id : null;
+  $('game').hidden = !running;
+  clock = running && state.match.elapsed_seconds !== null
+    ? { seconds: state.match.elapsed_seconds, received: performance.now() } : null;
+  tick();
   $('register').hidden = Boolean(state);
   $('player-panel').hidden = !state;
-  $('lobby-title').textContent = state ? 'Ты в лобби.' : 'Готов к игре?';
+  $('lobby-title').textContent = running ? 'Матч идёт.' : state ? 'Ты в лобби.' : 'Готов к игре?';
   $('hint').textContent = state ? 'Начни поиск или дождись соперников в очереди.' : 'Выбери nickname, чтобы войти в лобби.';
   if (!state) return;
   $('player-name').textContent = state.player.nickname;
@@ -20,6 +44,8 @@ function render(state) {
   $('logout').hidden = matched;
   $('match-info').hidden = !match;
   if (match) {
+    $('game-team').textContent = `${match.team} TEAM`;
+    $('game-team').className = match.team.toLowerCase();
     $('match-id').textContent = `#${match.id}`;
     $('match-case').textContent = match.case_id;
     $('match-team').textContent = match.team;
@@ -34,7 +60,7 @@ async function api(path, method = 'GET', data) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(`/lobby/${path}`, {
+    const response = await fetch(path.startsWith('/') ? path : `/lobby/${path}`, {
       method, signal: controller.signal, cache: 'no-store',
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(data ? { 'Content-Type': 'application/json' } : {}) },
@@ -57,6 +83,37 @@ async function api(path, method = 'GET', data) {
   }
 }
 
+async function refresh() {
+  const state = await api('session');
+  render(state);
+  if (!activeMatch) return;
+  try {
+    const access = await api(`/matches/${activeMatch}/access`);
+    clearAccess();
+    $('target-host').textContent = access.host;
+    for (const service of access.services || []) {
+      const item = document.createElement('li');
+      item.textContent = `${service.name}: ${service.host}:${service.port} (${service.protocol})`;
+      $('target-services').append(item);
+    }
+    $('target-info').hidden = false;
+    if (state.match.team === 'BLUE' && access.password) {
+      $('ssh-command').textContent = `ssh -p ${access.port} ${access.username}@${access.host}`;
+      $('ssh-password').textContent = access.password;
+      $('admin-access').hidden = false;
+      if (access.blue_key) {
+        $('blue-key').textContent = access.blue_key;
+        $('issued-key').hidden = false;
+      }
+    }
+    $('access-status').textContent = '';
+  } catch (error) {
+    clearAccess();
+    $('access-status').textContent = 'Доступ к арене временно недоступен. Повторяем запрос.';
+    throw error;
+  }
+}
+
 async function action(work) {
   if (busy) return;
   busy = true;
@@ -65,12 +122,13 @@ async function action(work) {
   try {
     await work();
   } catch (error) {
+    clearAccess();
     $('error').textContent = error.name === 'AbortError' || error instanceof TypeError
       ? 'Нет связи с сервером. Попробуй ещё раз.' : error.message;
     $('error').hidden = false;
   } finally {
     busy = false;
-    document.querySelectorAll('button').forEach(button => { button.disabled = false; });
+    document.querySelectorAll('button:not(#submit-key)').forEach(button => { button.disabled = false; });
   }
 }
 
@@ -94,7 +152,10 @@ $('logout').addEventListener('click', () => action(async () => {
   $('nickname').focus();
 }));
 render(null);
-if (token) action(async () => render(await api('session')));
+// Stage 12 will enable authoritative key submission; never put a key in the URL.
+$('key-form').addEventListener('submit', event => event.preventDefault());
+setInterval(tick, 1000);
+if (token) action(refresh);
 setInterval(() => {
-  if (token) action(async () => render(await api('session')));
+  if (token) action(refresh);
 }, 5000);

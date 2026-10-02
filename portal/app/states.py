@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from .models import Match, MatchState
 
 
@@ -12,3 +14,5 @@ def transition(match: Match, target: MatchState) -> None:
     if target != MatchState.FAILED and target != _SEQUENCE[_SEQUENCE.index(current) + 1]:
         raise ValueError(f"Invalid transition: {current} -> {target}")
     match.state = target
+    if target == MatchState.RUNNING:
+        match.started_at = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -41,5 +41,13 @@ button:disabled { opacity: .5; cursor: wait; }
 .card-bottom { margin-top: 30px; padding: 20px 0; border-top: 1px solid #374032; color: #a1aaa3; display: flex; justify-content: space-between; letter-spacing: 0; }
 footer { border-top: 1px solid #2c3330; color: #89978a; font-size: 10px; }
 [hidden] { display: none !important; }
+#game { border-top: 1px solid #374032; padding: 16px 0; overflow-wrap: anywhere; }
+#game h3 { font: 700 14px ui-monospace, monospace; }
+#game p, #target-services { font-size: 13px; line-height: 1.7; }
+#match-time { font: 20px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+#admin-access { border: 1px solid #495345; padding: 0 12px; margin-bottom: 24px; }
+#access-status { color: #a1aaa3; }
+.playing .intro { display: none; }
+.playing main { grid-template-columns: 1fr; width: min(760px, 88vw); }
 @media (max-width: 760px) { main { grid-template-columns: 1fr; gap: 40px; margin: 40px auto; } h1 { font-size: 48px; } .lobby { padding: 24px 22px 0; } header, footer { padding: 22px 6vw; } footer { flex-wrap: wrap; } .badge { font-size: 9px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

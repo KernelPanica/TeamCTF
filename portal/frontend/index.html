@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cyber Range — лобби</title>
+  <title>Cyber Range</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -40,6 +40,28 @@
           <p>Твоя команда: <strong id="match-team"></strong></p>
           <p>Союзник: <span id="match-allies"></span></p>
         </div>
+        <section id="game" aria-label="Игровой экран" hidden>
+          <h3 id="game-team"></h3>
+          <p>TIME <output id="match-time" aria-label="Продолжительность матча">—</output></p>
+          <p id="access-status" role="status"></p>
+          <div id="target-info" hidden>
+            <h3>TARGET</h3>
+            <p id="target-host"></p>
+            <ul id="target-services"></ul>
+          </div>
+          <div id="admin-access" hidden>
+            <h3>ADMIN ACCESS</h3>
+            <p>SSH: <code id="ssh-command"></code></p>
+            <p>Password: <code id="ssh-password"></code></p>
+            <p id="issued-key" hidden>BLUE_KEY: <code id="blue-key"></code></p>
+          </div>
+          <form id="key-form">
+            <label for="key">KEY</label>
+            <input id="key" name="key" autocomplete="off" spellcheck="false" aria-describedby="key-help">
+            <p id="key-help" class="help">Отправка ключей пока недоступна.</p>
+            <button id="submit-key" type="submit" disabled>SUBMIT</button>
+          </form>
+        </section>
         <button id="play" type="button">НАЧАТЬ ИГРУ <span aria-hidden="true">→</span></button>
         <button id="cancel" type="button" hidden>Выйти из очереди</button>
         <button id="logout" class="secondary" type="button">Сменить nickname</button>

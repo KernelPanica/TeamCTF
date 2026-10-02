@@ -10,10 +10,10 @@ from threading import Thread
 import pytest
 import yaml
 
-from backend.app.cases import CaseCatalog, CaseFormatError, CaseLoader
+from portal.app.cases import CaseCatalog, CaseFormatError, CaseLoader
 
 
-EXAMPLE = Path(__file__).resolve().parents[1] / "cases" / "web-001"
+EXAMPLE = Path(__file__).resolve().parents[1] / "arena/cases" / "web-001"
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def test_example_and_cli():
     case = CaseLoader().load(EXAMPLE)
     assert case.id == "web-001"
     assert case.required_services[0].port == 80
-    result = subprocess.run([sys.executable, "-m", "backend.app.cli", "cases", "validate"],
+    result = subprocess.run([sys.executable, "-m", "portal.app.cli", "cases", "validate"],
                             capture_output=True, text=True)
     assert result.returncode == 0
     assert "web-001: READY" in result.stdout
@@ -65,7 +65,7 @@ def test_invalid_spec_excluded(case_dir, mutation):
 @pytest.mark.parametrize("content", ["id: [broken", "- not a mapping", "!!python/object:os.system {}", ""])
 def test_invalid_yaml_cli(case_dir, content):
     (case_dir / "case.yaml").write_text(content)
-    result = subprocess.run([sys.executable, "-m", "backend.app.cli", "cases", "validate",
+    result = subprocess.run([sys.executable, "-m", "portal.app.cli", "cases", "validate",
                              "--directory", str(case_dir.parent)], capture_output=True, text=True)
     assert result.returncode == 1
     assert "web-001: INVALID" in result.stdout

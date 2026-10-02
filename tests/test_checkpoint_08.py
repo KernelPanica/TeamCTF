@@ -11,11 +11,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.access import issue_player_token
-from backend.app.cases import CaseLoader
-from backend.app.database import Base, make_engine
-from backend.app.main import create_app
-from backend.app.models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Team
+from portal.app.access import issue_player_token
+from portal.app.cases import CaseLoader
+from portal.app.database import Base, make_engine
+from portal.app.main import create_app
+from portal.app.models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Team
 from arena_support import destroy_arena, provision_arena
 from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 from arena_support import VictoryEngine
@@ -52,9 +52,9 @@ def victory_arena(tmp_path):
 def clocked(monkeypatch):
     clock = [0.0]
     probe = AsyncMock(return_value={"blue_eligible": True})
-    monkeypatch.setattr("backend.app.victory.monotonic", lambda: clock[0])
-    monkeypatch.setattr("backend.app.victory._utcnow", lambda: datetime(2026, 1, 1) + timedelta(seconds=clock[0]))
-    monkeypatch.setattr("backend.app.victory.check_red_defense", probe)
+    monkeypatch.setattr("portal.app.victory.monotonic", lambda: clock[0])
+    monkeypatch.setattr("portal.app.victory._utcnow", lambda: datetime(2026, 1, 1) + timedelta(seconds=clock[0]))
+    monkeypatch.setattr("portal.app.victory.check_red_defense", probe)
     return clock, probe
 
 
@@ -64,13 +64,13 @@ def timeline(session, match):
 
 def poll(engine, arena):
     session, match, _, _ = arena
-    return engine.poll(session, match, CaseLoader().load(ROOT / "cases/web-001"))
+    return engine.poll(session, match, CaseLoader().load(ROOT / "arena/cases/web-001"))
 
 
 def test_60_seconds_api_visibility_and_single_issue(victory_arena, clocked):
     session, match, url, tokens = victory_arena
     clock, probe = clocked
-    engine = VictoryEngine(Mock(), ROOT / "cases")
+    engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     endpoint = f"/matches/{match.id}/access"
     headers = [{"Authorization": f"Bearer {token}"} for token in tokens]
     with TestClient(create_app(url)) as client:
@@ -104,7 +104,7 @@ def test_60_seconds_api_visibility_and_single_issue(victory_arena, clocked):
 def test_failure_cancels_and_retry_requires_full_period(victory_arena, clocked, error):
     session, match, _, _ = victory_arena
     clock, probe = clocked
-    engine = VictoryEngine(Mock(), ROOT / "cases")
+    engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     poll(engine, victory_arena)
     clock[0] = 20
     if error:
@@ -129,11 +129,11 @@ def test_failure_cancels_and_retry_requires_full_period(victory_arena, clocked, 
 def test_gap_or_restart_cannot_issue_from_old_timer(victory_arena, clocked, restart):
     session, match, _, _ = victory_arena
     clock, _ = clocked
-    engine = VictoryEngine(Mock(), ROOT / "cases")
+    engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     poll(engine, victory_arena)
     clock[0] = 61
     if restart:
-        engine = VictoryEngine(Mock(), ROOT / "cases")
+        engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     assert poll(engine, victory_arena) == {"status": "SECURING", "remaining_seconds": 60}
     assert match.blue_key_issued_at is None
     assert [e.type for e in timeline(session, match)] == [
@@ -144,9 +144,9 @@ def test_gap_or_restart_cannot_issue_from_old_timer(victory_arena, clocked, rest
 def test_slow_probe_and_wall_clock_jump_do_not_skip_stabilization(victory_arena, clocked, monkeypatch):
     _, match, _, _ = victory_arena
     clock, probe = clocked
-    engine = VictoryEngine(Mock(), ROOT / "cases")
+    engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     poll(engine, victory_arena)
-    monkeypatch.setattr("backend.app.victory._utcnow", lambda: datetime(2036, 1, 1))
+    monkeypatch.setattr("portal.app.victory._utcnow", lambda: datetime(2036, 1, 1))
     clock[0] = 10
     assert poll(engine, victory_arena)["remaining_seconds"] == 50
 
@@ -162,7 +162,7 @@ def test_slow_probe_and_wall_clock_jump_do_not_skip_stabilization(victory_arena,
 def test_stopped_match_never_issues_and_old_matches_require_new_keys(victory_arena, clocked):
     session, match, _, _ = victory_arena
     _, probe = clocked
-    engine = VictoryEngine(Mock(), ROOT / "cases")
+    engine = VictoryEngine(Mock(), ROOT / "arena/cases")
     match.red_key = None
     session.commit()
     with pytest.raises(ValueError, match="no keys"):
@@ -176,13 +176,13 @@ def test_stopped_match_never_issues_and_old_matches_require_new_keys(victory_are
 @pytest.mark.skipif(os.getenv("RUN_DOCKER") != "1", reason="requires real Docker and 60-second stabilization")
 def test_real_keys_cancellation_firewall_and_60_second_stabilization(victory_arena):
     session, match, url, tokens = victory_arena
-    case = CaseLoader().load(ROOT / "cases/web-001")
+    case = CaseLoader().load(ROOT / "arena/cases/web-001")
     assert case.blue.stabilization_seconds == 60
     match.state = MatchState.PROVISIONING
     match.target_host = None
     session.commit()
-    runtime = DockerRuntime(ROOT / "cases")
-    engine = VictoryEngine(runtime, ROOT / "cases")
+    runtime = DockerRuntime(ROOT / "arena/cases")
+    engine = VictoryEngine(runtime, ROOT / "arena/cases")
 
     def wait_securing():
         deadline = time.monotonic() + 30

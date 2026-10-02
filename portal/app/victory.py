@@ -23,7 +23,7 @@ def _utcnow():
 
 
 class VictoryEngine:
-    def __init__(self, provider: ArenaProvider, cases_directory: Path = Path("cases")):
+    def __init__(self, provider: ArenaProvider, cases_directory: Path = Path("arena/cases")):
         self.provider = provider
         self.cases_directory = Path(cases_directory)
         self._match_id = None
@@ -110,7 +110,7 @@ class VictoryEngine:
         return status
 
 
-async def watch_victory(engine, match_id: int, provider, interval: float = 2, cases_directory: Path = Path("cases")):
+async def watch_victory(engine, match_id: int, provider, interval: float = 2, cases_directory: Path = Path("arena/cases")):
     if not 0 < interval < MAX_POLL_GAP:
         raise ValueError(f"interval must be between 0 and {MAX_POLL_GAP} seconds")
     victory = VictoryEngine(provider, cases_directory)

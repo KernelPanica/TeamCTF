@@ -7,8 +7,8 @@ docker compose exec -T backend python -m pytest -q
 player_id=$(docker compose exec -T backend python - <<'PY'
 import uuid
 from sqlalchemy.orm import Session
-from backend.app.database import make_engine
-from backend.app.models import Player
+from portal.app.database import make_engine
+from portal.app.models import Player
 
 with Session(make_engine()) as session:
     player = Player(nickname=f"checkpoint-01-{uuid.uuid4()}")
@@ -24,8 +24,8 @@ docker compose exec -T backend python - "$player_id" <<'PY'
 import sys
 import urllib.request
 from sqlalchemy.orm import Session
-from backend.app.database import make_engine
-from backend.app.models import Player
+from portal.app.database import make_engine
+from portal.app.models import Player
 
 with urllib.request.urlopen("http://localhost:8000/health", timeout=5) as response:
     assert response.status == 200

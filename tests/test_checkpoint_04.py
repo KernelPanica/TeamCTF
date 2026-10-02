@@ -16,11 +16,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from backend.app.access import issue_player_token
-from backend.app.cases import CaseLoader
-from backend.app.database import make_engine
-from backend.app.main import create_app
-from backend.app.models import Match, MatchPlayer, MatchState, Player, Team
+from portal.app.access import issue_player_token
+from portal.app.cases import CaseLoader
+from portal.app.database import make_engine
+from portal.app.main import create_app
+from portal.app.models import Match, MatchPlayer, MatchState, Player, Team
 from arena_support import destroy_arena, provision_arena
 from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 from shared.arena import Endpoint
@@ -114,13 +114,13 @@ def test_provisioning_uses_private_stdin_and_cleans_failure(arena_db, monkeypatc
     if failure:
         runtime._docker.side_effect = DockerRuntimeError("chpasswd failed")
         with pytest.raises(DockerRuntimeError):
-            provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
+            provision_arena(session, match, CaseLoader().load(ROOT / "arena/cases/web-001"), runtime)
         assert match.state == MatchState.FAILED and match.blue_password is None
         assert match.red_key is None and match.blue_key is None
         runtime.destroy.assert_called_once()
         assert runtime.destroy.call_args.args[0].id == match.id
     else:
-        provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), runtime)
+        provision_arena(session, match, CaseLoader().load(ROOT / "arena/cases/web-001"), runtime)
         assert match.state == MatchState.RUNNING and len(match.blue_password) >= 40
         assert runtime._docker.call_args.args == ("exec", "--interactive", "target", "chpasswd")
         assert runtime._docker.call_args.kwargs == {"stdin": f"blue:{match.blue_password}\n"}
@@ -166,8 +166,8 @@ def test_migration_preserves_existing_players_and_matches(tmp_path, monkeypatch)
 def test_blue_ssh_sudo_firewall_and_revocation(arena_db, tmp_path):
     assert shutil.which("ssh"), "Install the OpenSSH client on the Docker host"
     url, session, match, tokens = arena_db
-    runtime = DockerRuntime(ROOT / "cases")
-    case = CaseLoader().load(ROOT / "cases/web-001")
+    runtime = DockerRuntime(ROOT / "arena/cases")
+    case = CaseLoader().load(ROOT / "arena/cases/web-001")
     askpass = tmp_path / "askpass"
     askpass.write_text("#!/usr/bin/env python3\nimport os\nprint(os.environ['CYBERRANGE_TEST_PASSWORD'])\n")
     askpass.chmod(0o700)

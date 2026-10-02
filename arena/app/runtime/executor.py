@@ -28,7 +28,7 @@ def _wait_for_ssh(host):
 
 
 class Executor:
-    def __init__(self, cases_directory=Path("cases"), runtime=None):
+    def __init__(self, cases_directory=Path("arena/cases"), runtime=None):
         self.cases_directory = Path(cases_directory)
         self.runtime = runtime if runtime is not None else DockerRuntime(self.cases_directory)
 

@@ -7,7 +7,7 @@ from .common import checked_case_directory, target_url
 
 
 class HealthChecker:
-    def __init__(self, cases_directory=Path("cases"), timeout=5):
+    def __init__(self, cases_directory=Path("arena/cases"), timeout=5):
         if timeout <= 0:
             raise ValueError("timeout must be positive")
         self.cases_directory = Path(cases_directory).resolve()

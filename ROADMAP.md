@@ -66,18 +66,24 @@ BLUE не должна искать `BLUE_KEY` внутри контейнера
 
 # Stage 1 — Project Skeleton
 
-Создать минимальную структуру проекта.
+Минимальная структура проекта (пути актуализированы после checkpoint 8A).
 
 ```text
 cyberrange/
-├── backend/
-│   └── app/
-├── frontend/
-├── cases/
-├── runtime/
+├── portal/
+│   ├── app/
+│   ├── frontend/
+│   ├── migrations/
+│   ├── Dockerfile
+│   └── compose.yaml
+├── arena/
+│   ├── app/
+│   ├── cases/
+│   ├── Dockerfile
+│   └── compose.yaml
+├── shared/
 ├── tests/
 ├── data/
-├── docker/
 ├── README.md
 ├── ROADMAP.md
 ├── pyproject.toml
@@ -161,7 +167,7 @@ Automated tests проверяют:
 Каждый case:
 
 ```text
-cases/<case-id>/
+arena/cases/<case-id>/
 ├── case.yaml
 ├── Dockerfile
 ├── rootfs/
@@ -603,32 +609,674 @@ BLUE WIN ELIGIBLE = true
 
 # CHECKPOINT 8A — Portal/Arena Architecture Split
 
-**Статус: completed (2026-10-01).**
+**Статус: исходный и расширенный checkpoint completed (2026-10-02).**
 
-Изменение архитектуры имеет приоритет перед дальнейшей разработкой Stage 8–9.
-Их существующий код сохранён; WIP лобби отдельно сохранён в commit `11022ed`.
+Расширение реализовано: management API `/v1`, Portal-only source-IP firewall,
+конфигурируемый пул игровых портов с исключением management/reserved/occupied ports,
+защита параллельного выделения и освобождение после cleanup. Обновлены Compose,
+deployment-инструкции и host-тесты запрета постороннего source IP, доступа target
+к internal API и удаления опубликованных mappings. VM runtime не добавлялся.
 
-- Portal: игроки, команды, состояния, RED_KEY/BLUE_KEY, игровые решения и история.
-- Arena: Docker, временные credentials, подготовка case, health/exploit/RED-zone
-  проверки и журнал наблюдений; без Portal ORM/БД/секретов.
-- Общий async ArenaProvider: Local и Remote, одинаковое исполнение без дублирования.
-- Remote: HTTPS + отдельный Bearer token, опубликованные игровые порты,
-  management на private IP, host firewall блокирует обращения target.
-- Перезапуск Agent очищает ресурсы его owner; Portal отзывает потерянные arenas
-  и повторяет неуспешный cleanup. Ключ BLUE никогда не передаётся Arena.
-- Разрешены только create/status/events/delete, без generic exec/shell endpoint.
-- Stage 1–7 сохраняют поведенческие тесты; изменены пути и тестовые адаптеры границы.
-- Итоговая локальная регрессия с Chromium: **155 passed, 7 Docker skipped**.
-  Проверены Local/Remote contract, gap/recovery, host-policy validation,
-  Portal без Docker/импортов Arena и сохранённые Stage 1–9.
-- Проверка: `sudo bash tests/checkpoint_08a.sh`; deployment и ограничения — `arena/README.md`.
-- Пользователь подтвердил полную host-проверку: **161 passed, 1 skipped**,
-  `CHECKPOINT 8A PASSED` (150.85 s). Пропущен только opt-in Chromium-тест
-  Stage 9, ранее пройденный локально; Docker/HTTPS/firewall-проверки выполнены.
-- Commit checkpoint:
-  `checkpoint-08a: split portal and arena runtime`.
+Локальная регрессия: **161 passed, 7 Docker skipped**, включая Chromium.
+Пользователь подтвердил host-проверку: **167 passed, 1 skipped**, 162.17 s,
+`CHECKPOINT 8A PASSED`. Пропущен только opt-in Chromium, проверенный локально.
+Compose-конфиги проверены. Повторная проверка: `sudo bash tests/checkpoint_08a.sh`
+на изолированном тестовом Arena-хосте
+без production management policy. Тест не перезаписывает существующую
+`ARENA_MANAGEMENT` chain; подробности — `arena/README.md`.
 
-**Не возобновлять Stage 8, пока CHECKPOINT 8A не проходит.**
+Checkpoint 8A является границей между доверенным Portal и потенциально компрометируемой Arena.
+Все уже работающие Stage 1–7 и Stage 8 должны быть сохранены. Изменения этого patch не должны
+переписывать игровую механику, формат case, health/exploit проверки или Victory Engine без
+необходимости, вызванной новой границей доверия.
+
+## 8A.1 — Физическое разделение проекта
+
+Проект должен быть физически разделён:
+
+```text
+cyberrange/
+├── portal/
+│   ├── app/
+│   ├── frontend/
+│   ├── migrations/
+│   ├── Dockerfile
+│   └── compose.yaml
+├── arena/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── runtime/
+│   │   ├── networking/
+│   │   └── checks/
+│   ├── cases/
+│   ├── Dockerfile
+│   └── compose.yaml
+├── shared/
+├── tests/
+├── data/
+├── README.md
+├── ROADMAP.md
+└── pyproject.toml
+```
+
+Ответственность:
+
+```text
+PORTAL
+├── Web UI
+├── players
+├── matchmaking
+├── team assignment
+├── authoritative Match state
+├── RED_KEY / BLUE_KEY
+├── Victory Engine
+├── key submission
+├── reports
+└── persistent database
+
+ARENA
+├── Arena Agent
+├── runtime
+├── case catalog/runtime data
+├── temporary BLUE credentials
+├── health checker
+├── exploit checker
+├── RED-zone checker
+├── runtime event observations
+├── temporary game networking
+└── disposable targets
+```
+
+Общие DTO/API-контракты могут находиться в `shared/`, но `shared/` не должен становиться местом
+для общей бизнес-логики Portal и Arena.
+
+Portal не должен импортировать `DockerRuntime` или зависеть от установленного Docker.
+
+---
+
+## 8A.2 — Trust Model
+
+Зафиксировать модель доверия:
+
+```text
+Portal              TRUSTED
+   │
+   ▼
+Arena Agent         PRIVILEGED, MANAGEMENT-ONLY
+   │
+   ▼
+Arena Runtime       PRIVILEGED
+   │
+   ▼
+Game environment    DISPOSABLE / UNTRUSTED
+   │
+   ▼
+Target              HOSTILE
+```
+
+Target считается заведомо враждебным.
+
+Arena host считается потенциально компрометируемым и не должен обладать секретами,
+позволяющими получить административный доступ к Portal.
+
+Компрометация target не должна автоматически означать компрометацию Portal.
+
+---
+
+## 8A.3 — ArenaProvider
+
+Portal работает только через общий async-интерфейс:
+
+```python
+class ArenaProvider:
+    async def create_match(self, ...): ...
+    async def get_match(self, match_id): ...
+    async def get_events(self, match_id, ...): ...
+    async def destroy_match(self, match_id): ...
+```
+
+Реализации:
+
+```text
+LocalArenaProvider
+RemoteArenaProvider
+```
+
+Development:
+
+```text
+Portal
+  ↓
+LocalArenaProvider
+  ↓
+Arena Runtime
+```
+
+Production:
+
+```text
+Portal
+  ↓
+RemoteArenaProvider
+  ↓
+authenticated management channel
+  ↓
+Arena Agent
+  ↓
+Arena Runtime
+```
+
+Обе реализации должны соблюдать один контракт. Игровая логика между ними не дублируется.
+
+---
+
+## 8A.4 — Arena Management Plane
+
+Arena должна предоставлять ровно один management listener для связи с Portal.
+
+Пример:
+
+```text
+Arena host
+
+management:
+    :8443 → Arena Agent
+
+game plane:
+    dynamic ports → game environments
+```
+
+Management listener:
+
+- не является игровым портом;
+- не публикуется target-контейнерам;
+- недоступен из game networks;
+- разрешает соединения только от Portal;
+- использует TLS;
+- использует отдельную аутентификацию Portal → Arena;
+- не используется игроками.
+
+Host firewall должен реализовывать как минимум:
+
+```text
+PORTAL_IP → MANAGEMENT_PORT    ACCEPT
+GAME_NET  → MANAGEMENT_PORT    DROP
+OTHER     → MANAGEMENT_PORT    DROP
+```
+
+Если инфраструктура не позволяет надёжно ограничить source IP, должен использоваться
+эквивалентный защищённый management channel с взаимной аутентификацией.
+
+Arena Agent является единственной разрешённой точкой привилегированного управления Arena со
+стороны Portal.
+
+---
+
+## 8A.5 — Не предоставлять Portal raw Docker API
+
+Portal не должен получать прямой доступ к:
+
+```text
+/var/run/docker.sock
+Docker Remote API
+SSH root shell Arena
+generic command execution
+```
+
+в штатном игровом control path.
+
+Запрещены API endpoints вида:
+
+```text
+POST /exec
+POST /shell
+POST /command
+POST /docker
+```
+
+и любые аналоги, позволяющие Portal передавать произвольную shell-команду или произвольные
+Docker options.
+
+Минимальный management API:
+
+```text
+POST   /v1/matches
+GET    /v1/matches/{id}
+GET    /v1/matches/{id}/events
+DELETE /v1/matches/{id}
+```
+
+Portal передаёт декларативное намерение:
+
+```json
+{
+  "match_id": "abc123",
+  "case_id": "web-017",
+  "seed": 58391
+}
+```
+
+Arena самостоятельно определяет разрешённые:
+
+- image;
+- network;
+- capabilities;
+- resource limits;
+- port mappings;
+- temporary credentials;
+- volumes;
+- checker configuration.
+
+Portal не может запросить `privileged=true`, host mounts, host network или произвольный image
+через management API.
+
+---
+
+## 8A.6 — Management Plane и Game Plane
+
+Сети должны быть разделены логически и firewall-политикой:
+
+```text
+                         INTERNET
+
+                 ┌──────────┴──────────┐
+                 │                     │
+              PORTAL                 ARENA
+                 │                     │
+                 │ management channel  │
+                 └────────────────────►│ Arena Agent
+                                       │
+                                       ├── management plane
+                                       │      X
+                                       │      X no route/access
+                                       │      X
+                                       └── game plane
+                                              │
+                                        game environments
+                                              │
+                                          RED / BLUE
+```
+
+Game environment не должен иметь прямого доступа к:
+
+- Arena Agent;
+- management port;
+- Portal internal API;
+- Portal database;
+- infrastructure credentials.
+
+Публичный Portal UI/API, необходимый игрокам для игрового интерфейса и submit KEY, может быть
+доступен через обычный публичный endpoint, но это не должно открывать внутренний management API.
+
+---
+
+## 8A.7 — Runtime Layers
+
+Не использовать privileged Docker-in-Docker как security boundary.
+
+### MVP runtime
+
+Для текущего MVP разрешена схема:
+
+```text
+Arena Host OS
+    ↓
+Arena Runtime / Docker
+    ↓
+disposable Ubuntu 20.04 target
+    ↓
+vulnerable service
+```
+
+Target:
+
+- Ubuntu 20.04;
+- disposable;
+- без `privileged`;
+- без Docker socket;
+- без host network;
+- без host PID namespace;
+- без произвольных host mounts;
+- с ограниченными capabilities;
+- с CPU/RAM/PID limits.
+
+Уязвимость case находится внутри disposable target/environment, а не на Arena host.
+
+### Future hardened runtime
+
+Архитектура должна допускать будущую реализацию:
+
+```text
+Arena Host
+    ↓
+Disposable Ubuntu VM
+    ↓
+Docker
+    ↓
+vulnerable target
+```
+
+Это предназначено для кейсов, где container escape, kernel exploitation или иная атака на
+container boundary является реалистичной частью угрозы.
+
+Не реализовывать VM runtime в MVP.
+
+Допустимая абстракция:
+
+```text
+ArenaRuntime
+├── DockerRuntime      # MVP
+└── VMRuntime          # future, not implemented
+```
+
+Не создавать фиктивную `VMRuntime` реализацию, пустые сервисы или преждевременную
+виртуализационную инфраструктуру.
+
+---
+
+## 8A.8 — Disposable State и Reset
+
+Arena должна считаться disposable execution host.
+
+Каждый матч:
+
+```text
+CREATE
+  ↓
+fresh game environment
+  ↓
+RUNNING
+  ↓
+DESTROY
+  ↓
+container/network/volumes/NAT state removed
+```
+
+Нормальное завершение матча обязано удалять:
+
+- target containers;
+- match-specific networks;
+- temporary volumes;
+- temporary credentials;
+- dynamic port mappings;
+- match-specific firewall/NAT state;
+- checker/probe resources.
+
+При старте Arena Agent выполняется reconciliation.
+
+Он должен найти runtime resources, принадлежащие Cyber Range, по labels/owner metadata:
+
+```text
+cyberrange=true
+owner=<arena-instance-id>
+match_id=<id>
+```
+
+и обработать orphaned state.
+
+После перезапуска Arena старое игровое состояние не должно автоматически становиться
+действующим матчем.
+
+Portal остаётся authoritative источником состояния матча.
+
+Если Arena потеряла runtime после reboot:
+
+```text
+Arena restart
+    ↓
+reconciliation
+    ↓
+old runtime unavailable
+    ↓
+Portal marks affected arena/match failed or lost
+    ↓
+cleanup/recovery
+```
+
+Нельзя молча создавать новый target и продолжать старый матч как будто ничего не произошло.
+
+---
+
+## 8A.9 — Game Ports
+
+Требование «один порт Arena» относится только к management plane.
+
+Игровые endpoints являются отдельным game plane и могут занимать динамический диапазон портов,
+который Arena выделяет контейнерам.
+
+Пример:
+
+```text
+ARENA PUBLIC IP
+
+8443/tcp
+    → Arena Agent
+    → только Portal
+
+30000-39999/tcp
+    → dynamic game mappings
+    → targets
+    → RED / BLUE
+```
+
+Конкретный диапазон должен быть конфигурируемым.
+
+Arena Agent обязан предотвращать:
+
+- конфликт port allocation;
+- выдачу management port;
+- выдачу зарезервированных host ports;
+- сохранение port mapping после destroy;
+- использование case произвольного host port вне разрешённого диапазона.
+
+Portal получает уже готовые endpoints от Arena и не выбирает host ports самостоятельно.
+
+---
+
+## 8A.10 — Keys и Authority
+
+Portal остаётся authoritative владельцем:
+
+```text
+RED_KEY
+BLUE_KEY
+winner
+match state
+```
+
+`BLUE_KEY` никогда не передаётся Arena заранее.
+
+Arena сообщает факты:
+
+```text
+health = HEALTHY
+exploit = PATCHED
+red_surface = AVAILABLE
+stabilization = PASSED
+```
+
+Portal принимает игровое решение:
+
+```text
+BLUE_SECURED_TARGET
+→ BLUE_KEY may be revealed
+```
+
+Arena не может самостоятельно объявить победителя.
+
+RED objective передаётся в target только в объёме, необходимом конкретному матчу.
+
+Ключи не должны появляться в Arena events, logs или management API responses без необходимости.
+
+---
+
+## 8A.11 — Secrets
+
+На Arena запрещено хранить:
+
+- Portal DB;
+- Portal session secrets;
+- Portal signing secrets;
+- SSH private keys для административного доступа к Portal;
+- BLUE_KEY;
+- полный persistent match history.
+
+Credential Portal → Arena должен иметь только права Arena Agent API.
+
+Credential не должен предоставлять shell или доступ к Portal.
+
+Все временные BLUE credentials уничтожаются вместе с матчем.
+
+---
+
+## 8A.12 — Failure Model
+
+### Target compromised
+
+Ожидаемое состояние. Матч продолжается.
+
+### Target container escape suspected
+
+Arena должна считаться потенциально скомпрометированной.
+
+Новые матчи на ней не запускаются до административного восстановления/reimage.
+
+### Arena unavailable
+
+Portal:
+
+```text
+marks Arena OFFLINE
+stops assigning new matches
+marks affected provisioning/running matches appropriately
+preserves persistent history
+```
+
+### Portal unavailable
+
+Arena не принимает команды от игроков вместо Portal.
+
+Существующие временные environments могут быть очищены по recovery/reconciliation policy.
+
+Portal после восстановления сверяет authoritative state с Arena.
+
+---
+
+## 8A.13 — Existing Implementation Migration
+
+Не удалять и не переписывать работающий код Stage 1–8 без необходимости.
+
+После patch:
+
+- `portal/` сохраняет существующий backend, frontend, migrations и DB;
+- `arena/` содержит Agent, runtime, cases и checks;
+- `shared/` содержит только необходимые контракты;
+- существующий `DockerRuntime` становится реализацией MVP Arena Runtime;
+- существующие health/exploit/RED-zone checks выполняются на Arena;
+- существующий Victory Engine остаётся на Portal;
+- существующие Local/Remote ArenaProvider сохраняются;
+- Stage 8 продолжает использовать факты Arena, но решение о BLUE_KEY остаётся Portal.
+
+---
+
+## CHECKPOINT 8A
+
+Checkpoint считается пройденным только если выполняются все условия.
+
+### Project boundary
+
+1. `portal/`, `arena/`, `shared/` физически разделены.
+2. Portal не импортирует DockerRuntime.
+3. Portal запускается на машине без Docker.
+4. Arena Agent запускается независимо.
+5. Arena не импортирует Portal ORM/DB implementation.
+
+### Management boundary
+
+6. Arena имеет один management listener.
+7. Management listener доступен Portal и недоступен game network.
+8. Portal → Arena requests аутентифицированы и защищены TLS.
+9. Нет generic exec/shell/command endpoint.
+10. Portal не имеет raw Docker API/socket access.
+11. API принимает только декларативные операции над матчами.
+
+### Runtime
+
+12. Portal может создать матч через RemoteArenaProvider.
+13. Arena создаёт fresh Ubuntu 20.04 target.
+14. Target не privileged.
+15. Target не получает Docker socket/host network/host PID.
+16. Health checker работает через новую границу.
+17. Exploit checker работает через новую границу.
+18. RED-zone checker работает через новую границу.
+19. BLUE credentials доступны только через предусмотренный Portal flow.
+
+### Networking
+
+20. Arena Agent management port не маршрутизируется в target/game network.
+21. Game ports выделяются только из разрешённого диапазона.
+22. Management/reserved host ports не могут быть выделены target.
+23. После destroy game port mappings исчезают.
+24. Target не может обращаться к Portal internal management API.
+
+### Authority
+
+25. RED_KEY/BLUE_KEY/winner остаются authoritative данными Portal.
+26. BLUE_KEY не передаётся Arena.
+27. Arena events содержат наблюдения, а не самостоятельное решение о победителе.
+28. Victory Engine продолжает работать на Portal.
+
+### Cleanup / restart
+
+29. Normal destroy удаляет container/network/volumes/probes/temporary networking.
+30. Arena Agent startup reconciliation обнаруживает orphaned resources.
+31. Reboot Arena не продолжает старый матч на новом target молча.
+32. Portal корректно обрабатывает потерянную Arena.
+33. История завершённых матчей сохраняется независимо от Arena.
+
+### Regression
+
+34. Все Stage 1–7 tests проходят.
+35. Все уже реализованные Stage 8 tests проходят.
+36. LocalArenaProvider и RemoteArenaProvider проходят одинаковые contract tests.
+37. Существующий web/lobby код не ломается.
+38. Host-level checkpoint проверяет Docker, HTTPS/auth boundary, firewall policy,
+    game port allocation и cleanup.
+
+После выполнения:
+
+```text
+checkpoint-08a: harden portal arena boundary
+```
+
+Если исходный `checkpoint-08a: split portal and arena runtime` уже существует, создать новый commit,
+не переписывая историю:
+
+```text
+checkpoint-08a: harden arena isolation and management plane
+```
+
+**Не продолжать новые продуктовые Stage, пока расширенный CHECKPOINT 8A не проходит.**
+
+### История выполнения до расширения patch
+
+На момент расширения 8A уже было выполнено физическое разделение:
+
+- `portal/` содержит app, frontend, migrations и deployment Portal;
+- `arena/` содержит Agent, runtime, проверки и `cases/`;
+- общие контракты находятся в `shared/`;
+- Python entrypoint Portal: `portal.app.main:app`;
+- корневые Compose/Alembic entrypoints и существующая БД `data/` сохранены;
+- Local/Remote ArenaProvider уже введены;
+- Remote использует HTTPS + отдельный Bearer token;
+- management был вынесен на private IP;
+- generic exec/shell endpoint отсутствует;
+- BLUE_KEY не передаётся Arena;
+- host-проверка ранее завершилась результатом **161 passed, 1 skipped**.
+
+Новый patch не отменяет эти результаты. Он формализует management/game plane, запрещает raw Docker
+control, закрепляет disposable/reconciliation model и вводит будущую VM boundary без реализации VM
+в MVP.
 
 ---
 
@@ -1130,12 +1778,17 @@ FAILED
 → cleanup
 ```
 
-При падении backend после restart необходимо найти orphaned resources.
+При падении Portal или перезапуске Arena необходимо согласовать authoritative состояние Portal
+с фактическим runtime Arena.
 
-Реализовать reconciliation:
+Arena Agent выполняет локальный reconciliation своих disposable resources, а Portal выполняет
+recovery через `ArenaProvider`.
+
+Реализовать:
 
 ```text
-runtime reconcile
+arena reconcile
+portal arena recovery
 ```
 
 Ресурсы идентифицировать labels:
@@ -1157,17 +1810,74 @@ match_id=<id>
 
 Нет оставшихся resources.
 
-### Backend crash
+### Portal crash
 
-После restart reconciliation обнаруживает и корректно обрабатывает orphaned arena.
+После restart Portal сверяет authoritative match state с Arena через `ArenaProvider` и не создаёт
+дубликаты environments.
 
-История завершённых матчей при этом сохраняется.
+### Arena restart/crash
+
+Arena startup reconciliation обнаруживает orphaned resources своего owner. Потерянный runtime
+не должен молча заменяться новым target для уже идущего матча.
+
+История завершённых матчей при этом сохраняется на Portal.
 
 **Не переходить к Stage 17, пока CHECKPOINT 16 не проходит.**
 
 ---
 
-# Stage 17 — End-to-End MVP Test
+# Stage 17 — Release Installation and End-to-End MVP Test
+
+## 17.1 — Установка из релиза
+
+**Статус: planned.** Релизная сборка и установка пока не реализованы.
+Выполнять этот этап после предыдущих checkpoint, включая расширенный 8A.
+
+Пользователь устанавливает Portal и Arena на два отдельных сервера из одного
+версионированного релиза, без клонирования репозитория и сборки образов на серверах.
+
+В релиз `v0.1.0` включить:
+
+- отдельные готовые OCI-образы Portal и Arena с одинаковым version tag;
+- `portal-v0.1.0.tar.gz`: Compose-конфиг, `.env.example`, инструкции Portal;
+- `arena-v0.1.0.tar.gz`: Compose-конфиг, `.env.example`, настройку host firewall
+  и инструкции Arena;
+- Python wheel Portal с frontend, миграциями и необходимыми общими контрактами,
+  а также инструкцию native-запуска для сервера без Docker;
+- `SHA256SUMS`, release notes, требования к ОС/архитектуре, Docker/Compose
+  и описание совместимости Portal/Arena API.
+
+Deployment-архивы должны быть самодостаточными: без ссылок на соседние каталоги
+исходного репозитория. Общие контракты упаковываются при сборке; отдельная
+установка `shared/` пользователем не требуется. Первый релиз поддерживает
+Linux x86_64; другие архитектуры не объявлять поддержанными без проверки.
+
+Compose использует готовые образы с закреплёнными digest, без `build:` и `latest`.
+По умолчанию устанавливаются Portal и Arena одной версии. Несовместимые версии
+management API отклоняются с понятной ошибкой до создания матча.
+
+Инструкция первичной установки должна провести пользователя через:
+
+1. Проверку системных требований и подготовку двух серверов.
+2. Настройку постоянного хранилища Portal и применение миграций.
+3. Настройку management/game addresses, разрешённых игровых портов и firewall Arena.
+4. Выпуск/установку TLS-сертификата, настройку доверия CA и отдельного Arena API token.
+5. Запуск сервисов и проверку связи Portal → Arena без отключения TLS verification.
+
+Релизы не содержат готовых секретов, private keys, БД или данных матчей.
+Обновление описывает backup БД, завершение активных матчей, порядок обновления
+сервисов и миграций. Если rollback требует восстановления backup, это указано явно.
+Данные Portal сохраняются вне заменяемых контейнеров/пакетов.
+
+Добавить автоматизированную сборку и проверку релизных артефактов. Публиковать
+только прошедшую acceptance версию; наличие образов само по себе не закрывает MVP.
+
+## 17.2 — End-to-End из релизных артефактов
+
+Перед игровыми сценариями установить сервисы на двух чистых серверах из
+подготовленного релиза, без доступа к checkout исходников. Отдельно проверить
+native-установку Portal без Docker. Далее проверить оба игровых сценария через
+RemoteArenaProvider; LocalArenaProvider остаётся режимом разработки.
 
 Провести полностью автоматизированный тест.
 
@@ -1218,6 +1928,15 @@ BLUE investigates
 
 ## CHECKPOINT 17 — MVP COMPLETE
 
+Дополнительно обязательны:
+
+- установка Portal/Arena из релизных артефактов на два чистых сервера;
+- native-запуск Portal без Docker и без исходного checkout;
+- HTTPS/auth, недоступность management API из target и отсутствие секретов в артефактах;
+- сохранение БД/истории после перезапуска и проверка документированного обновления;
+- корректные checksums и соответствие образов, архивов и пакета одной версии;
+- успешные RED/BLUE end-to-end сценарии именно на установленной релизной сборке.
+
 MVP считается готовым только если оба сценария проходят без:
 
 - ручного создания контейнера;
@@ -1233,6 +1952,11 @@ MVP считается готовым только если оба сценар�
 # Definition of Done
 
 Версия `0.1.0` считается завершённой, когда четыре человека могут открыть веб-приложение и провести несколько последовательных Red vs Blue матчей без участия администратора.
+
+Оператор должен иметь возможность установить эту версию на отдельные Portal/Arena
+серверы из опубликованного релиза по инструкции, без клонирования исходников
+и локальной сборки образов. Первичная настройка серверов выполняется оператором;
+проведение последующих матчей не требует ручного администрирования.
 
 Основной контракт игры:
 

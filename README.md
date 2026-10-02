@@ -1,11 +1,23 @@
 # TeamCTF
 
+Код разделён на два сервиса:
+
+- [`portal/`](portal/README.md) — backend, frontend, миграции и запуск доверенного Portal.
+- [`arena/`](arena/README.md) — Agent, Docker runtime, проверки и игровые `cases/`.
+
+`shared/` содержит общие контракты без дублирования; `tests/` — общие проверки.
+База остаётся в `data/`. Корневые Compose/Alembic-конфиги сохраняют прежние команды.
+После обновления структуры переустановите editable-пакет:
+`.venv/bin/pip install -e '.[test,browser]'`.
+
 Локальная Red vs Blue CTF-платформа. Реализованы backend, cases, Docker arenas,
 SSH-доступ BLUE, проверки защиты, выдача ключа BLUE и веб-лобби.
 Автоматическое создание матчей появится в Stage 10.
 
-**Checkpoint 8A: Portal/Arena split завершён.** Host-проверка: 161 passed,
-1 skipped (opt-in Chromium). Stage 8–9 сохранены. Развёртывание двух серверов,
+**Исходный и расширенный checkpoint 8A завершены.** Host-проверка: 167 passed,
+1 skipped (Chromium ранее проверен локально).
+Новый patch добавляет `/v1`, Portal-only firewall и ограниченный пул игровых портов.
+Локально: 161 passed, 7 Docker skipped. Stage 8–9 сохранены. Развёртывание двух серверов,
 TLS, firewall, новый async provider API и проверка описаны в [arena/README.md](arena/README.md).
 Ниже разделы Stage 3–8 описывают исходное поведение; исполнение теперь находится
 в Arena, а controller означает Portal, обращающийся через provider.
@@ -50,7 +62,7 @@ docker compose run --rm --no-deps backend alembic upgrade head
 python3 -m venv .venv
 .venv/bin/pip install -e '.[test]'
 .venv/bin/alembic upgrade head
-.venv/bin/uvicorn backend.app.main:app --reload
+.venv/bin/uvicorn portal.app.main:app --reload
 .venv/bin/python -m pytest -q
 ```
 
@@ -89,7 +101,7 @@ cases. Неизвестный id вызывает `KeyError`, выбор из п
 `CaseFormatError`. Каталог перечитывается при создании `CaseCatalog`;
 порядок сортируется по id, выбор с seed не меняет глобальный random state.
 
-Структура и YAML показаны в `cases/web-001`. Поля обязательны, лишние поля
+Структура и YAML показаны в `arena/cases/web-001`. Поля обязательны, лишние поля
 отклоняются; имена сервисов и пары port/protocol должны быть уникальны.
 ID должен совпадать с именем каталога. Validator проверяет наличие rootfs,
 базовый образ `ubuntu:20.04`, локальные пути и Python-синтаксис checkers.
@@ -106,8 +118,8 @@ Cases устанавливает оператор: это доверенный �
 `Cyber Range file service` с переводом строки. Checkers запускаются снаружи:
 
 ```bash
-python cases/web-001/checks/health.py http://target:80
-python cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
+python arena/cases/web-001/checks/health.py http://target:80
+python arena/cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
 ```
 
 Для health код 0 означает здоровый сервис, остальные — неуспех проверки.
@@ -266,7 +278,7 @@ HEALTHY и PATCHED. Это проверка допуска Stage 6, не выд�
 (код 10 для PATCHED — нормальный результат):
 
 ```bash
-python cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
+python arena/cases/web-001/checks/exploit.py http://target:80 < expected-key.txt
 ```
 
 Полная проверка этапов 1–6 на хосте:

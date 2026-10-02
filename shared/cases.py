@@ -111,7 +111,7 @@ class CaseLoader:
 
 
 class CaseCatalog:
-    def __init__(self, directory: Path = Path("cases")):
+    def __init__(self, directory: Path = Path("arena/cases")):
         directory = Path(directory)
         self._cases: dict[str, CaseSpec] = {}
         self.invalid: dict[str, str] = {}

@@ -8,13 +8,13 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy.orm import Session
 
-from backend.app.cases import CaseLoader
-from backend.app.database import Base, make_engine
-from backend.app.models import Match
+from portal.app.cases import CaseLoader
+from portal.app.database import Base, make_engine
+from portal.app.models import Match
 from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 
 
-CASE_ROOT = Path(__file__).resolve().parents[1] / "cases"
+CASE_ROOT = Path(__file__).resolve().parents[1] / "arena/cases"
 
 
 @pytest.mark.parametrize("failure", ["create", "inspect", "volumes"])

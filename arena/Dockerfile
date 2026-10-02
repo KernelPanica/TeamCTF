@@ -4,5 +4,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends docker.io iptab
 RUN pip install --no-cache-dir 'fastapi>=0.115,<1' 'uvicorn>=0.30,<1' 'pydantic>=2.9,<3' 'PyYAML>=6,<7'
 COPY shared/ shared/
 COPY arena/ arena/
-COPY cases/ cases/
 CMD ["python", "-m", "arena.app.serve"]

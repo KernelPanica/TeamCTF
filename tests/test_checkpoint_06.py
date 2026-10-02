@@ -12,11 +12,11 @@ import pytest
 import yaml
 from sqlalchemy.orm import Session
 
-from backend.app.cases import CaseLoader
-from backend.app.database import Base, make_engine
+from portal.app.cases import CaseLoader
+from portal.app.database import Base, make_engine
 from arena.app.checks.exploit import ExploitChecker
 from arena_support import check_defense
-from backend.app.models import Case, Match, MatchState
+from portal.app.models import Case, Match, MatchState
 from arena_support import destroy_arena, provision_arena
 from arena.app.runtime.docker import DockerRuntime
 
@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def exploit_arena(tmp_path):
     directory = tmp_path / "cases/web-001"
-    shutil.copytree(ROOT / "cases/web-001", directory)
+    shutil.copytree(ROOT / "arena/cases/web-001", directory)
     engine = make_engine(f"sqlite:///{tmp_path / 'exploit.db'}")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
@@ -142,13 +142,13 @@ def test_real_target_vulnerable_patched_and_stopped(exploit_arena):
     match.state = MatchState.PROVISIONING
     match.target_host = None
     session.commit()
-    runtime = DockerRuntime(ROOT / "cases")
-    case = CaseLoader().load(ROOT / "cases/web-001")
+    runtime = DockerRuntime(ROOT / "arena/cases")
+    case = CaseLoader().load(ROOT / "arena/cases/web-001")
 
     def check_ready():
         deadline = time.monotonic() + 10
         while True:
-            result = check_defense(session, match, case, match.red_key, ROOT / "cases")
+            result = check_defense(session, match, case, match.red_key, ROOT / "arena/cases")
             if result["health"]["status"] == "HEALTHY":
                 return result
             assert time.monotonic() < deadline, "web did not become healthy"
@@ -168,7 +168,7 @@ def test_real_target_vulnerable_patched_and_stopped(exploit_arena):
         result = check_ready()
         assert result["exploit"] == "PATCHED" and result["blue_eligible"] is True
         runtime._docker("exec", target["Id"], "service", "cyberrange-web", "stop")
-        result = check_defense(session, match, case, match.red_key, ROOT / "cases")
+        result = check_defense(session, match, case, match.red_key, ROOT / "arena/cases")
         assert result["exploit"] == "UNREACHABLE"
         assert result["health"]["status"] == "UNHEALTHY" and result["blue_eligible"] is False
     finally:

@@ -45,16 +45,16 @@ class RemoteArenaProvider(ArenaProvider):
     async def create_match(self, request):
         body = request.model_dump(mode="json")
         body["red_key"] = request.red_key.get_secret_value()
-        return await self.request("POST", "/matches", ArenaStatus, json=body)
+        return await self.request("POST", "/v1/matches", ArenaStatus, json=body)
 
     async def get_match(self, match_id):
-        return await self.request("GET", f"/matches/{match_id}", ArenaStatus)
+        return await self.request("GET", f"/v1/matches/{match_id}", ArenaStatus)
 
     async def get_events(self, match_id, after=0):
-        return await self.request("GET", f"/matches/{match_id}/events", EventPage, params={"after": after})
+        return await self.request("GET", f"/v1/matches/{match_id}/events", EventPage, params={"after": after})
 
     async def destroy_match(self, match_id):
-        await self.request("DELETE", f"/matches/{match_id}", timeout=900)
+        await self.request("DELETE", f"/v1/matches/{match_id}", timeout=900)
 
 
 @asynccontextmanager
@@ -64,7 +64,7 @@ async def configured_provider():
         from arena.app.provider import LocalArenaProvider
         from arena.app.runtime.executor import Executor
         from arena.app.service import ArenaService
-        service = ArenaService(Executor(os.environ.get("ARENA_CASES", "cases")))
+        service = ArenaService(Executor(os.environ.get("ARENA_CASES", "arena/cases")))
         await service.start()
         try:
             yield LocalArenaProvider(service)

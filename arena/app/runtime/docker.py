@@ -15,11 +15,17 @@ class DockerRuntimeError(RuntimeError):
 
 
 class DockerRuntime:
-    def __init__(self, cases_directory: Path = Path("cases"), *, owner="local", publish_ip=None, public_host=None):
+    def __init__(self, cases_directory: Path = Path("arena/cases"), *, owner="local", publish_ip=None, public_host=None,
+                 game_port_min=30000, game_port_max=39999, reserved_ports=(), management_port=8443):
         self.cases_directory = Path(cases_directory).resolve()
         self.owner = owner
         self.publish_ip = publish_ip
         self.public_host = public_host or publish_ip
+        self.port_pool = None
+        if publish_ip:
+            from arena.app.networking.ports import PortPool
+            self.port_pool = PortPool(publish_ip, game_port_min, game_port_max,
+                                      {*reserved_ports, management_port})
 
     @staticmethod
     def _match_id(match: Match) -> str:
@@ -80,12 +86,13 @@ class DockerRuntime:
         published = []
         if self.publish_ip:
             from .firewall import verify
-            verify()
+            verify(require_management=True)
             bridge = "crarena" + hashlib.sha256(f"{self.owner}:{match_id}".encode()).hexdigest()[:8]
             network_options = ["--opt", f"com.docker.network.bridge.name={bridge}"]
             ports = {(22, "tcp")} | {(s.port, s.protocol) for s in case.required_services}
-            for port, protocol in sorted(ports):
-                published += ["--publish", f"{self.publish_ip}::{port}/{protocol}"]
+            mappings = self.port_pool.allocate(match_id, ports)
+            for (port, protocol), host_port in mappings.items():
+                published += ["--publish", f"{self.publish_ip}:{host_port}:{port}/{protocol}"]
         network_id = container_id = None
         try:
             network_id = self._docker(
@@ -107,6 +114,7 @@ class DockerRuntime:
             return target
         except Exception as exc:
             # Only roll back IDs created by this call, never resources from a name collision.
+            cleaned = True
             for kind, resource_id in (("container", container_id), ("network", network_id)):
                 if resource_id:
                     try:
@@ -115,7 +123,10 @@ class DockerRuntime:
                         else:
                             self._docker("network", "rm", resource_id)
                     except DockerRuntimeError as cleanup_error:
+                        cleaned = False
                         exc.add_note(f"Rollback failed: {cleanup_error}")
+            if cleaned and self.port_pool:
+                self.port_pool.release(match_id)
             raise
 
     def inspect(self, match: Match) -> dict | None:
@@ -146,6 +157,8 @@ class DockerRuntime:
             if resources:
                 options = ["--force", "--volumes"] if kind == "container" else []
                 self._docker(kind, "rm", *options, *resources)
+        if self.port_pool:
+            self.port_pool.release(match_id)
 
     def endpoints(self, target, case, internal_host):
         services = [(s.name, s.port, s.protocol) for s in case.required_services]
@@ -158,6 +171,8 @@ class DockerRuntime:
                 if len(binding) != 1 or binding[0]["HostIp"] != self.publish_ip:
                     raise DockerRuntimeError("unexpected published endpoint")
                 host, port = self.public_host, int(binding[0]["HostPort"])
+                if not self.port_pool.first <= port <= self.port_pool.last or port in self.port_pool.reserved:
+                    raise DockerRuntimeError("published endpoint outside game port policy")
             result.append(Endpoint(name=name, host=host, port=port, protocol=protocol))
         return result
 

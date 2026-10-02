@@ -14,7 +14,7 @@ def authenticate(request: Request, credentials: HTTPAuthorizationCredentials | N
         raise HTTPException(401, "Unauthorized", headers={"WWW-Authenticate": "Bearer"})
 
 
-router = APIRouter(dependencies=[Depends(authenticate)])
+router = APIRouter(prefix="/v1", dependencies=[Depends(authenticate)])
 
 
 def status_json(status):

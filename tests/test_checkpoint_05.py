@@ -16,12 +16,12 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.cases import CaseLoader
-from backend.app.database import Base, make_engine
+from portal.app.cases import CaseLoader
+from portal.app.database import Base, make_engine
 from arena_support import HealthChecker
-from backend.app.health import watch_health
+from portal.app.health import watch_health
 from arena_support import observation_provider
-from backend.app.models import Case, Match, MatchEvent, MatchState
+from portal.app.models import Case, Match, MatchEvent, MatchState
 from arena_support import destroy_arena, provision_arena
 from arena.app.runtime.docker import DockerRuntime
 
@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def health_arena(tmp_path):
     directory = tmp_path / "cases" / "web-001"
-    shutil.copytree(ROOT / "cases/web-001", directory)
+    shutil.copytree(ROOT / "arena/cases/web-001", directory)
     engine = make_engine(f"sqlite:///{tmp_path / 'health.db'}")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
@@ -56,7 +56,7 @@ def test_transitions_downtime_and_restart(health_arena, monkeypatch):
     case = CaseLoader().load(directory)
     base = datetime(2026, 1, 1)
     clock = iter(base + timedelta(seconds=offset) for offset in [0, 2, 4, 6, 9, 11, 14, 18])
-    monkeypatch.setattr("backend.app.health._utcnow", lambda: next(clock))
+    monkeypatch.setattr("portal.app.health._utcnow", lambda: next(clock))
     run = Mock(side_effect=[subprocess.CompletedProcess([], code) for code in [0, 0, 1, 1, 0, 0, 1, 0]])
     monkeypatch.setattr(subprocess, "run", run)
     results = []
@@ -171,9 +171,9 @@ def test_real_service_stop_restore_and_downtime(health_arena):
     match.state = MatchState.PROVISIONING
     match.target_host = None
     session.commit()
-    runtime = DockerRuntime(ROOT / "cases")
-    case = CaseLoader().load(ROOT / "cases/web-001")
-    checker = HealthChecker(ROOT / "cases")
+    runtime = DockerRuntime(ROOT / "arena/cases")
+    case = CaseLoader().load(ROOT / "arena/cases/web-001")
+    checker = HealthChecker(ROOT / "arena/cases")
 
     def wait_healthy():
         deadline = time.monotonic() + 10

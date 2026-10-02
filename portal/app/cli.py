@@ -25,12 +25,12 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     cases = commands.add_parser("cases").add_subparsers(dest="action", required=True)
     validate = cases.add_parser("validate")
-    validate.add_argument("--directory", type=Path, default=Path("cases"))
+    validate.add_argument("--directory", type=Path, default=Path("arena/cases"))
     for name in ("health", "victory"):
         actions = commands.add_parser(name).add_subparsers(dest="action", required=True)
         watch = actions.add_parser("watch")
         watch.add_argument("match_id", type=int)
-        watch.add_argument("--directory", type=Path, default=Path("cases"))
+        watch.add_argument("--directory", type=Path, default=Path("arena/cases"))
         watch.add_argument("--interval", type=float, default=2)
     args = parser.parse_args()
     if args.command in ("health", "victory"):

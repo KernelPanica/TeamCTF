@@ -42,7 +42,7 @@ def create_app(database_url=None, arena_provider=None):
     app = FastAPI(lifespan=lifespan)
     app.include_router(access_router)
     app.include_router(lobby_router)
-    frontend = Path(__file__).resolve().parents[2] / "frontend"
+    frontend = Path(__file__).resolve().parents[1] / "frontend"
     app.mount("/static", StaticFiles(directory=frontend), name="static")
 
     @app.get("/", include_in_schema=False)

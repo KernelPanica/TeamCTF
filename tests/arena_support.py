@@ -13,7 +13,7 @@ from arena.app.checks.health import HealthChecker as RuntimeHealth
 from arena.app.checks.exploit import ExploitChecker
 from arena.app.checks.red_zone import RedZoneChecker
 from arena.app.runtime.executor import Executor
-from backend.app import health, provisioning, exploit, red_zone, victory
+from portal.app import health, provisioning, exploit, red_zone, victory
 
 
 class HealthChecker(RuntimeHealth):
@@ -25,7 +25,7 @@ class HealthChecker(RuntimeHealth):
 
 class ExecutionProvider:
     """Synchronous-runtime test double of the provider transport."""
-    def __init__(self, runtime, directory=Path("cases")):
+    def __init__(self, runtime, directory=Path("arena/cases")):
         self.executor = Executor(directory, runtime)
 
     async def create_match(self, request):
@@ -43,7 +43,7 @@ def provision_arena(session, match, case, runtime):
         return asyncio.run(provisioning.provision_arena(session, match, case, provider))
     except Exception:
         # The direct executor double has no asynchronous FAILED status.
-        from backend.app.models import MatchState
+        from portal.app.models import MatchState
         match.state = MatchState.FAILED
         match.red_key = match.blue_key = None
         session.commit()

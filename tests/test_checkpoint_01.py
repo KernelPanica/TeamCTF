@@ -9,10 +9,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.app.database import make_engine
-from backend.app.main import create_app
-from backend.app.models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Team
-from backend.app.states import transition
+from portal.app.database import make_engine
+from portal.app.main import create_app
+from portal.app.models import Case, Match, MatchEvent, MatchPlayer, MatchState, Player, Team
+from portal.app.states import transition
 
 
 @pytest.fixture

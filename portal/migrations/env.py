@@ -1,7 +1,7 @@
 from alembic import context
 
-from backend.app.database import Base, make_engine
-from backend.app import models  # noqa: F401
+from portal.app.database import Base, make_engine
+from portal.app import models  # noqa: F401
 
 engine = make_engine()
 with engine.connect() as connection:

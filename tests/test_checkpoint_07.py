@@ -8,9 +8,9 @@ from unittest.mock import Mock
 import pytest
 from sqlalchemy.orm import Session
 
-from backend.app.cases import CaseLoader
-from backend.app.database import Base, make_engine
-from backend.app.models import Case, Match, MatchState
+from portal.app.cases import CaseLoader
+from portal.app.database import Base, make_engine
+from portal.app.models import Case, Match, MatchState
 from arena_support import destroy_arena, provision_arena
 from arena.app.checks.red_zone import RedZoneChecker
 from arena_support import check_red_defense
@@ -75,9 +75,9 @@ def test_probe_contract_and_cleanup(red_arena, monkeypatch, health_code, exploit
         return ""
 
     runtime._docker.side_effect = docker
-    checker = RedZoneChecker(runtime, ROOT / "cases")
+    checker = RedZoneChecker(runtime, ROOT / "arena/cases")
     monkeypatch.setattr("arena.app.checks.red_zone.secrets.token_hex", lambda _: "12345678")
-    result = checker.check(match, CaseLoader().load(ROOT / "cases/web-001"), "secret")
+    result = checker.check(match, CaseLoader().load(ROOT / "arena/cases/web-001"), "secret")
     assert result["surface"] == surface and result["exploit"] == exploit
     create = next(args for args, _ in calls if args[0] == "create")
     assert "--read-only" in create and create[create.index("--cap-drop") + 1] == "ALL"
@@ -105,8 +105,8 @@ def test_probe_cleanup_after_checker_error(red_arena):
 
     runtime._docker.side_effect = docker
     with pytest.raises(DockerRuntimeError, match="probe failed"):
-        RedZoneChecker(runtime, ROOT / "cases").check(
-            match, CaseLoader().load(ROOT / "cases/web-001"), "secret"
+        RedZoneChecker(runtime, ROOT / "arena/cases").check(
+            match, CaseLoader().load(ROOT / "arena/cases/web-001"), "secret"
         )
     runtime._docker.assert_called_with("container", "rm", "--force", "--volumes", "probe-id")
 
@@ -118,8 +118,8 @@ def test_invalid_target_topology(red_arena):
     broken["NetworkSettings"]["Networks"]["other"] = {"NetworkID": "other"}
     runtime.inspect.return_value = broken
     with pytest.raises(DockerRuntimeError, match="exactly one"):
-        RedZoneChecker(runtime, ROOT / "cases").check(
-            match, CaseLoader().load(ROOT / "cases/web-001"), "secret"
+        RedZoneChecker(runtime, ROOT / "arena/cases").check(
+            match, CaseLoader().load(ROOT / "arena/cases/web-001"), "secret"
         )
     runtime._docker.assert_not_called()
 
@@ -130,14 +130,14 @@ def test_stop_firewall_and_valid_patch(red_arena):
     match.state = MatchState.PROVISIONING
     match.target_host = None
     session.commit()
-    runtime = DockerRuntime(ROOT / "cases")
-    case = CaseLoader().load(ROOT / "cases/web-001")
+    runtime = DockerRuntime(ROOT / "arena/cases")
+    case = CaseLoader().load(ROOT / "arena/cases/web-001")
 
     def wait_for(expected_surface=None):
         deadline = time.monotonic() + 15
         while True:
             result = check_red_defense(
-                session, match, case, match.red_key, runtime, ROOT / "cases"
+                session, match, case, match.red_key, runtime, ROOT / "arena/cases"
             )
             if result["health"]["status"] == "HEALTHY" and (
                 expected_surface is None or result["red_zone"]["surface"] == expected_surface
@@ -156,7 +156,7 @@ def test_stop_firewall_and_valid_patch(red_arena):
         # A: stopping the required service fails both contracts.
         runtime._docker("exec", target_data["Id"], "service", "cyberrange-web", "stop")
         result = check_red_defense(
-            session, match, case, match.red_key, runtime, ROOT / "cases"
+            session, match, case, match.red_key, runtime, ROOT / "arena/cases"
         )
         assert result["health"]["status"] == "UNHEALTHY"
         assert result["red_zone"]["surface"] == "UNAVAILABLE"
@@ -177,7 +177,7 @@ def test_stop_firewall_and_valid_patch(red_arena):
             "-s", ipam["Subnet"], "--dport", "80", "-j", "DROP",
         )
         result = check_red_defense(
-            session, match, case, match.red_key, runtime, ROOT / "cases"
+            session, match, case, match.red_key, runtime, ROOT / "arena/cases"
         )
         assert result["health"]["status"] == "HEALTHY"
         assert result["red_zone"]["surface"] == "UNAVAILABLE"

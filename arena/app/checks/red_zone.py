@@ -11,7 +11,7 @@ from arena.app.runtime.docker import DockerRuntime, DockerRuntimeError
 
 
 class RedZoneChecker:
-    def __init__(self, runtime: DockerRuntime, cases_directory: Path = Path("cases")):
+    def __init__(self, runtime: DockerRuntime, cases_directory: Path = Path("arena/cases")):
         self.runtime = runtime
         self.cases_directory = Path(cases_directory).resolve()
 

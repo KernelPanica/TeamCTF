@@ -21,10 +21,14 @@ def create_app(service=None, token=None):
             from .runtime.executor import Executor
             from .service import ArenaService
             from .runtime.firewall import verify
-            verify()
-            runtime = DockerRuntime(os.environ.get("ARENA_CASES", "/app/cases"),
+            verify(require_management=True)
+            runtime = DockerRuntime(os.environ.get("ARENA_CASES", "/app/arena/cases"),
                 owner=os.environ["ARENA_OWNER"], publish_ip=os.environ["ARENA_GAME_IP"],
-                public_host=os.environ["ARENA_PUBLIC_HOST"])
+                public_host=os.environ["ARENA_PUBLIC_HOST"],
+                game_port_min=int(os.environ.get("ARENA_GAME_PORT_MIN", "30000")),
+                game_port_max=int(os.environ.get("ARENA_GAME_PORT_MAX", "39999")),
+                reserved_ports={int(p) for p in os.environ.get("ARENA_RESERVED_PORTS", "22,80,443").split(",") if p},
+                management_port=int(os.environ.get("ARENA_MANAGEMENT_PORT", "8443")))
             app.state.service = ArenaService(Executor(runtime.cases_directory, runtime))
         else:
             app.state.service = service

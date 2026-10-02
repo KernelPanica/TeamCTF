@@ -19,12 +19,12 @@ from sqlalchemy.orm import Session
 from arena.app.main import create_app as create_agent
 from arena.app.provider import LocalArenaProvider
 from arena.app.service import ArenaService
-from backend.app.arena_provider import RemoteArenaProvider
-from backend.app.database import Base, make_engine
-from backend.app.main import create_app as create_portal
-from backend.app.models import Match, MatchState, MatchEvent
-from backend.app.provisioning import provision_arena, destroy_arena
-from backend.app.observations import collect_observations
+from portal.app.arena_provider import RemoteArenaProvider
+from portal.app.database import Base, make_engine
+from portal.app.main import create_app as create_portal
+from portal.app.models import Match, MatchState, MatchEvent
+from portal.app.provisioning import provision_arena, destroy_arena
+from portal.app.observations import collect_observations
 from shared.arena import ArenaError, CreateMatch, Endpoint, Observation
 from shared.cases import CaseLoader
 
@@ -48,7 +48,7 @@ class FakeExecutor:
     def create(self, request):
         self.created.append(request.match_id)
         assert self.block.wait(5)
-        return SimpleNamespace(id=request.match_id), CaseLoader().load(ROOT / "cases/web-001"), "blue-password", [
+        return SimpleNamespace(id=request.match_id), CaseLoader().load(ROOT / "arena/cases/web-001"), "blue-password", [
             Endpoint(name="ssh", host="192.0.2.1", port=22001),
             Endpoint(name="web", host="192.0.2.1", port=18001),
         ]
@@ -126,7 +126,7 @@ def test_provider_contract_lifecycle_and_portal_persistence(tmp_path, remote):
                     match = Match(id=2, state=MatchState.PROVISIONING)
                     session.add(match)
                     session.commit()
-                    await provision_arena(session, match, CaseLoader().load(ROOT / "cases/web-001"), provider)
+                    await provision_arena(session, match, CaseLoader().load(ROOT / "arena/cases/web-001"), provider)
                     assert match.state == MatchState.RUNNING
                     assert match.blue_key and match.red_key and match.blue_password == "blue-password"
                     await wait_events(provider, 2)
@@ -154,18 +154,22 @@ def test_authentication_validation_and_no_command_api():
         app = create_agent(service, TOKEN)
         async with app.router.lifespan_context(app):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://arena.test") as client:
-                for method, path in [("POST", "/matches"), ("GET", "/matches/1"),
-                                     ("GET", "/matches/1/events"), ("DELETE", "/matches/1")]:
+                for method, path in [("POST", "/v1/matches"), ("GET", "/v1/matches/1"),
+                                     ("GET", "/v1/matches/1/events"), ("DELETE", "/v1/matches/1")]:
                     assert (await client.request(method, path, json={})).status_code == 401
                     assert (await client.request(method, path, headers={"Authorization": "Bearer wrong"}, json={})).status_code == 401
                 client.headers["Authorization"] = "Bearer " + TOKEN
-                for path in ("/exec", "/shell", "/command"):
+                for path in ("/exec", "/shell", "/command", "/docker", "/v1/exec", "/v1/shell", "/v1/command", "/v1/docker", "/matches"):
                     assert (await client.post(path, json={"command": "id"})).status_code == 404
-                response = await client.post("/matches", json={"match_id": 1, "run_id": str(uuid4()),
+                response = await client.post("/v1/matches", json={"match_id": 1, "run_id": str(uuid4()),
                     "case_id": "../../secret", "red_key": "secret-objective", "command": "id"})
                 assert response.status_code == 422 and "secret-objective" not in response.text
                 assert response.headers["cache-control"] == "no-store"
                 assert service.matches == {}
+                for option in ("privileged", "image", "mounts", "network", "host_port"):
+                    response = await client.post("/v1/matches", json={"match_id": 1, "run_id": str(uuid4()),
+                        "case_id": "web-001", "red_key": "key", option: "forbidden"})
+                    assert response.status_code == 422
     asyncio.run(scenario())
 
 
@@ -204,8 +208,8 @@ class NoArena(importlib.abc.MetaPathFinder):
         if fullname == 'arena' or fullname.startswith('arena.'):
             raise AssertionError('Portal imported Arena runtime')
 sys.meta_path.insert(0, NoArena())
-from backend.app.main import create_app
-from backend.app.database import Base, make_engine
+from portal.app.main import create_app
+from portal.app.database import Base, make_engine
 from fastapi.testclient import TestClient
 engine = make_engine()
 Base.metadata.create_all(engine)
@@ -219,7 +223,7 @@ with TestClient(create_app()) as client:
     result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
     for path in (ROOT / "arena").rglob("*.py"):
-        assert "backend.app" not in path.read_text()
+        assert "portal.app" not in path.read_text()
     dockerfile = (ROOT / "arena/Dockerfile").read_text()
     assert "COPY . ." not in dockerfile and "COPY backend" not in dockerfile
 
@@ -264,7 +268,7 @@ def test_cursor_gap_is_explicit_in_both_providers():
 
 
 def test_lost_arena_revokes_access_and_retries_cleanup(tmp_path):
-    from backend.app.arena_reconcile import reconcile_once
+    from portal.app.arena_reconcile import reconcile_once
     from unittest.mock import AsyncMock
     async def scenario():
         db = make_engine(f"sqlite:///{tmp_path / 'lost.db'}")
@@ -315,7 +319,7 @@ def test_firewall_verification_fails_closed(monkeypatch):
     monkeypatch.setattr(firewall, "command", lambda *args: "-A INPUT -j ACCEPT")
     with pytest.raises(RuntimeError):
         firewall.verify()
-    runtime = DockerRuntime(ROOT / "cases", publish_ip="127.0.0.1")
+    runtime = DockerRuntime(ROOT / "arena/cases", publish_ip="127.0.0.1")
     docker = Mock()
     monkeypatch.setattr(runtime, "_docker", docker)
     # Verify itself is exercised before launching any target; build is harmless.
@@ -329,11 +333,11 @@ def test_firewall_verification_fails_closed(monkeypatch):
         pytest.fail("runtime attempted to create an unprotected arena")
     monkeypatch.setattr(runtime, "_docker", build)
     with pytest.raises(RuntimeError):
-        runtime.prepare(RuntimeMatch(1), CaseLoader().load(ROOT / "cases/web-001"))
+        runtime.prepare(RuntimeMatch(1), CaseLoader().load(ROOT / "arena/cases/web-001"))
 
 
 @pytest.mark.skipif(os.getenv("RUN_ARENA") != "1", reason="requires root Docker host and installed Arena firewall")
-def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path):
+def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path, monkeypatch):
     from arena.app.runtime.docker import DockerRuntime
     from arena.app.runtime.context import RuntimeMatch
     from arena.app.runtime.firewall import verify
@@ -353,11 +357,23 @@ def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path):
     token = secrets.token_urlsafe(32)
     env = os.environ | {"ARENA_OWNER": owner, "ARENA_TOKEN": token,
         "ARENA_MANAGEMENT_IP": management_ip, "ARENA_MANAGEMENT_PORT": str(port),
+        "ARENA_PORTAL_IP": management_ip,
+        "ARENA_GAME_PORT_MIN": "30000", "ARENA_GAME_PORT_MAX": "30100", "ARENA_RESERVED_PORTS": "30000,30001",
         "ARENA_GAME_IP": "127.0.0.1", "ARENA_PUBLIC_HOST": "127.0.0.1",
-        "ARENA_TLS_CERT": str(cert), "ARENA_TLS_KEY": str(key), "ARENA_CASES": str(ROOT / "cases")}
+        "ARENA_TLS_CERT": str(cert), "ARENA_TLS_KEY": str(key), "ARENA_CASES": str(ROOT / "arena/cases")}
+    from arena.app.runtime import firewall
+    try:
+        firewall.command("-S", "ARENA_MANAGEMENT")
+    except subprocess.CalledProcessError:
+        pass
+    else:
+        pytest.fail("run host acceptance on an isolated Arena host without an installed management policy")
+    for name in ("ARENA_MANAGEMENT_IP", "ARENA_MANAGEMENT_PORT", "ARENA_PORTAL_IP"):
+        monkeypatch.setenv(name, env[name])
+    firewall.setup()
     log = (tmp_path / "agent.log").open("w+")
     process = subprocess.Popen([sys.executable, "-m", "arena.app.serve"], cwd=ROOT, env=env, stdout=log, stderr=log)
-    runtime = DockerRuntime(ROOT / "cases", owner=owner)
+    runtime = DockerRuntime(ROOT / "arena/cases", owner=owner)
     match_id = secrets.randbelow(2**50) + 1
     request = CreateMatch(match_id=match_id, run_id=uuid4(), case_id="web-001", red_key="RED_" + secrets.token_urlsafe(32))
 
@@ -390,6 +406,14 @@ def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path):
                 assert time.monotonic() < deadline
                 await asyncio.sleep(0.2)
             assert (await provider.create_match(request)).run_id == request.run_id
+            assert all(30002 <= e.port <= 30100 and e.port != port for e in status.endpoints)
+            assert len({e.port for e in status.endpoints}) == len(status.endpoints)
+            # A different source on this host must fail at TCP, even before auth.
+            with socket.socket() as outsider:
+                outsider.bind(("127.0.0.2", 0))
+                outsider.settimeout(2)
+                with pytest.raises(OSError):
+                    outsider.connect((management_ip, port))
             context = RuntimeMatch(match_id)
             target = runtime.inspect(context)
             assert "20.04" in runtime._docker("exec", target["Id"], "cat", "/etc/os-release")
@@ -445,6 +469,14 @@ for host in sys.argv[1:-1]:
     raise SystemExit('management reachable from target: '+host)
 """
             runtime._docker("exec", target["Id"], "python3", "-c", script, management_ip, gateway, str(port))
+            # A non-management internal API on the host must also be unreachable.
+            with socket.socket() as internal_api:
+                internal_api.bind((management_ip, 0))
+                internal_api.listen()
+                internal_port = internal_api.getsockname()[1]
+                with socket.create_connection((management_ip, internal_port), timeout=1):
+                    pass
+                runtime._docker("exec", target["Id"], "python3", "-c", script, management_ip, str(internal_port))
             # Deliberate root/NET_ADMIN attacker still cannot change host policy.
             runtime._docker("exec", target["Id"], "iptables", "-F")
             runtime._docker("exec", target["Id"], "python3", "-c", script, management_ip, gateway, str(port))
@@ -460,6 +492,9 @@ for host in sys.argv[1:-1]:
             await provider.destroy_match(match_id)
             await provider.destroy_match(match_id)
             assert (await provider.get_match(match_id)).blue_password is None
+            for endpoint in status.endpoints:
+                with pytest.raises(OSError):
+                    socket.create_connection((endpoint.host, endpoint.port), timeout=1)
             for kind in ("container", "network", "volume"):
                 assert runtime._resources(kind, str(match_id)) == []
             # Abrupt Agent restart must clean a live arena before accepting requests.
@@ -491,3 +526,7 @@ for host in sys.argv[1:-1]:
             process.wait()
         runtime.cleanup_owned()
         log.close()
+        jump, _ = firewall.management_policy()
+        firewall.command("-D", "INPUT", *jump)
+        firewall.command("-F", "ARENA_MANAGEMENT")
+        firewall.command("-X", "ARENA_MANAGEMENT")

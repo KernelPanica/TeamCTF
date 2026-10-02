@@ -1,4 +1,4 @@
-"""Anonymous sessions and a persistent queue; matchmaking is Stage 10."""
+"""Anonymous sessions, persistent queue and role-scoped matchmaking status."""
 import unicodedata
 from datetime import datetime, timedelta, timezone
 
@@ -10,7 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .access import authenticated_player, bearer, issue_player_token
-from .models import Player
+from .models import Player, MatchPlayer
+from .matchmaking import player_match, TERMINAL
 
 
 router = APIRouter(prefix="/lobby")
@@ -40,9 +41,21 @@ def snapshot(session: Session, player: Player, now: datetime) -> dict:
     count = session.scalar(select(func.count()).select_from(Player).where(
         Player.queued_at.is_not(None), Player.session_expires_at > now,
     ))
-    return {"player": {"id": player.id, "nickname": player.nickname},
+    result = {"player": {"id": player.id, "nickname": player.nickname},
             "status": "SEARCHING" if player.queued_at is not None else "IDLE",
             "queued_players": count}
+    match = player_match(session, player.id)
+    if match is not None and player.queued_at is None:
+        member = session.get(MatchPlayer, (match.id, player.id))
+        allies = session.scalars(select(Player).join(MatchPlayer).where(
+            MatchPlayer.match_id == match.id, MatchPlayer.team == member.team,
+            Player.id != player.id,
+        ).order_by(Player.id)).all()
+        result["match"] = {"id": match.id, "case_id": match.case_id, "state": match.state,
+                           "team": member.team, "allies": [{"id": p.id, "nickname": p.nickname} for p in allies]}
+        if match.state not in TERMINAL:
+            result["status"] = "MATCHED"
+    return result
 
 
 @router.post("/session", status_code=201)
@@ -69,6 +82,9 @@ def lobby_action(request, response, credentials, action):
     with Session(request.app.state.engine) as session:
         player = authenticated_player(session, credentials)
         expire_sessions(session, now)
+        match = player_match(session, player.id, active_only=True)
+        if match is not None and action in ("logout", "join", "leave"):
+            raise HTTPException(409, "Матч уже создан. Дождитесь его завершения")
         if action == "logout":
             player.active_nickname = player.token_hash = player.queued_at = player.session_expires_at = None
             session.commit()

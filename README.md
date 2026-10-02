@@ -12,7 +12,7 @@
 
 Локальная Red vs Blue CTF-платформа. Реализованы backend, cases, Docker arenas,
 SSH-доступ BLUE, проверки защиты, выдача ключа BLUE и веб-лобби.
-Автоматическое создание матчей появится в Stage 10.
+Stage 10 добавляет автоматический подбор 2 RED / 2 BLUE и provisioning через ArenaProvider.
 
 **Исходный и расширенный checkpoint 8A завершены.** Host-проверка: 167 passed,
 1 skipped (Chromium ранее проверен локально).
@@ -222,7 +222,8 @@ sudo bash tests/checkpoint_04.sh
 между poll (по умолчанию 2 секунды), `--directory` — каталог cases.
 Команда выводит JSON со статусом HEALTHY/UNHEALTHY и результатами по сервисам;
 завершается при выходе матча из RUNNING или очистке target. На матч запускается
-один watcher. Автоматический запуск из matchmaking относится к Stage 10.
+один watcher. Для автоматически созданных матчей Stage 10 Portal сам запускает
+Victory Engine, который также сохраняет health-наблюдения; второй CLI watcher не нужен.
 Provisioning теперь сохраняет связь матча с выбранным case.
 
 `HealthChecker.poll(session, match, case)` выполняет локальный case-checker
@@ -369,7 +370,9 @@ regression tests Stage 1–7. Ожидаемый итог — `CHECKPOINT 8 PASS
 После `docker compose up --build -d --wait` откройте http://localhost:8000/.
 Выберите nickname и нажмите «НАЧАТЬ ИГРУ»: появится `SEARCHING FOR MATCH`
 и количество ожидающих игроков. «Выйти из очереди» отменяет поиск,
-«Сменить nickname» завершает сессию. Создание матчей относится к Stage 10.
+«Сменить nickname» завершает сессию. При настроенном ArenaProvider четыре игрока
+автоматически получают матч (Stage 10); после назначения выход из очереди и смена
+nickname блокируются до завершения/ошибки матча.
 
 Nickname содержит 2–24 буквы, цифры, `_` или `-`. Активные имена уникальны
 без учёта регистра и после Unicode-нормализации. Сессия живёт 15 минут после
@@ -399,3 +402,41 @@ sudo bash tests/checkpoint_09.sh
 .venv/bin/python -m playwright install chromium
 RUN_BROWSER=1 .venv/bin/python -m pytest tests/test_checkpoint_09.py -q -p no:cacheprovider
 ```
+
+## Matchmaking (Stage 10)
+
+Portal с настроенным RemoteArenaProvider или LocalArenaProvider раз в секунду
+забирает четыре самые ранние активные заявки. Назначение выполняется одной
+SQLite-транзакцией: игрок не может одновременно попасть в два матча, выход из
+очереди до назначения учитывается. Истёкшие сессии не назначаются.
+
+Portal сохраняет случайный seed, выбирает READY case из `PORTAL_CASES` (по умолчанию
+`arena/cases`), перемешивает игроков и назначает 2 RED / 2 BLUE. На Arena должен
+быть установлен тот же case. Матч сразу виден всем участникам: номер, case,
+своя команда, союзник и `PROVISIONING`, затем `RUNNING` или `FAILED`.
+Лобби не возвращает пароли, ключи и токены других игроков.
+
+Provisioning выполняется в фоне. После RUNNING автоматически запускается
+существующий Victory Engine; выдача BLUE_KEY по-прежнему не завершает матч.
+После перезапуска Portal незавершённый provisioning использует сохранённый
+run ID и ключи, а наблюдение RUNNING-матча возобновляется со сбросом стабилизации.
+При неопределённом сетевом результате новые назначения приостанавливаются до
+восстановления связи. После FAILED игрок может снова нажать «НАЧАТЬ ИГРУ».
+
+Запускайте **один worker Portal**: DB защищает назначение очереди, а фоновые задачи
+provisioning/наблюдения принадлежат одному процессу. Compose это фиксирует;
+для native-запуска используйте `uvicorn portal.app.main:app --workers 1`.
+Без ArenaProvider очередь работает как лобби и матч не создаётся.
+
+Примените миграцию 0006 через `.venv/bin/alembic upgrade head` или пересборку Compose.
+Проверка на изолированном Docker-хосте с подготовленным Chromium:
+
+```bash
+sudo bash tests/checkpoint_10.sh
+```
+
+Скрипт включает предыдущие проверки, HTTPS/firewall 8A, четыре браузера и реальное
+автоматическое создание target через LocalArenaProvider. Тесты используют временные
+БД. На тестовом хосте не должно быть активных local arenas или production management
+policy: startup reconciliation и host-проверки намеренно очищают свои ресурсы.
+Ожидаемый итог — `CHECKPOINT 10 PASSED`.

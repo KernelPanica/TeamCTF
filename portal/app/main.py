@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from contextlib import suppress
 import asyncio
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,27 +16,39 @@ from .access import router as access_router
 from .lobby import router as lobby_router
 from .arena_provider import configured_provider
 from .arena_reconcile import reconcile_forever
+from .matchmaking import matchmaker
 
 
-def create_app(database_url=None, arena_provider=None):
+def create_app(database_url=None, arena_provider=None, cases_directory=None):
+    directory = Path(cases_directory or os.environ.get("PORTAL_CASES", "arena/cases"))
+
+    @asynccontextmanager
+    async def controllers(app, provider):
+        app.state.arena_provider = provider
+        tasks = []
+        if provider is not None:
+            tasks = [asyncio.create_task(reconcile_forever(app.state.engine, provider)),
+                     asyncio.create_task(matchmaker(app.state.engine, provider, directory))]
+        try:
+            yield
+        finally:
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                with suppress(asyncio.CancelledError):
+                    await task
+
     @asynccontextmanager
     async def lifespan(app):
         app.state.engine = make_engine(database_url)
         try:
             if arena_provider is not None:
-                app.state.arena_provider = arena_provider
-                yield
+                async with controllers(app, arena_provider):
+                    yield
             else:
                 async with configured_provider() as provider:
-                    app.state.arena_provider = provider
-                    task = asyncio.create_task(reconcile_forever(app.state.engine, provider)) if provider else None
-                    try:
+                    async with controllers(app, provider):
                         yield
-                    finally:
-                        if task:
-                            task.cancel()
-                            with suppress(asyncio.CancelledError):
-                                await task
         finally:
             app.state.engine.dispose()
 

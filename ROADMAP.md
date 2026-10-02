@@ -1467,6 +1467,22 @@ shuffle(players)
 
 ## CHECKPOINT 10
 
+**Статус: completed (2026-10-02).**
+
+- Атомарное назначение четырёх активных заявок в SQLite, seed в миграции 0006,
+  случайный READY case и команды 2 RED / 2 BLUE без повторного назначения игрока.
+- Фоновый provisioning через provider, повтор неопределённого запроса с тем же run ID,
+  возобновление после restart Portal и автоматический запуск существующего Victory Engine.
+- Лобби показывает свою команду, союзника, case и PROVISIONING/RUNNING/FAILED;
+  secrets не выдаются. Выход/смена nickname запрещены после активного назначения.
+- Тесты покрывают гонку claims, выход до назначения, expired sessions, пустой
+  каталог, потерю связи, повтор после FAILED, restart и четыре Chromium-сессии.
+- Итоговая локальная регрессия: **166 passed, 8 Docker skipped**, включая два browser tests.
+- Полная проверка: `sudo bash tests/checkpoint_10.sh` на изолированном Docker-хосте
+  с Chromium и без production management policy.
+- Пользователь подтвердил **174 passed**, `CHECKPOINT 10 PASSED`, включая Docker,
+  HTTPS Arena и Chromium.
+
 Четыре игрока автоматически получают матч.
 
 Должно выполняться:

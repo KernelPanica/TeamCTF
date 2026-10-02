@@ -13,7 +13,7 @@
 ```bash
 .venv/bin/pip install -e '.[test,browser]'
 .venv/bin/alembic -c portal/alembic.ini upgrade head
-.venv/bin/uvicorn portal.app.main:app --reload
+.venv/bin/uvicorn portal.app.main:app --workers 1
 ```
 
 Или `docker compose up --build -d --wait`: корневой Compose подключает
@@ -21,5 +21,7 @@
 имя Compose-сервиса `backend` сохранено для совместимости.
 
 Portal работает без Docker при использовании RemoteArenaProvider.
+С настроенным provider четыре игрока из очереди автоматически получают матч 2×2;
+provisioning и Victory Engine работают в фоне. Используйте один worker Portal.
 Общие контракты находятся в `shared/`; тесты двух сервисов — в `tests/`.
 Настройка HTTPS и отдельного Arena-сервера: [arena/README.md](../arena/README.md).

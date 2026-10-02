@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String
+from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -46,6 +46,7 @@ class Match(Base):
         server_default="WAITING",
     )
     case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"))
+    seed: Mapped[int | None] = mapped_column(BigInteger)
     target_host: Mapped[str | None]
     blue_password: Mapped[str | None]
     red_key: Mapped[str | None]

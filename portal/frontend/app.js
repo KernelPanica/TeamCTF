@@ -11,10 +11,23 @@ function render(state) {
   if (!state) return;
   $('player-name').textContent = state.player.nickname;
   const searching = state.status === 'SEARCHING';
-  $('state-label').textContent = searching ? 'SEARCHING FOR MATCH' : 'READY';
+  const matched = state.status === 'MATCHED';
+  const match = state.match;
+  $('state-label').textContent = match ? match.state : searching ? 'SEARCHING FOR MATCH' : 'READY';
   $('queue-count').textContent = `Игроков в очереди: ${state.queued_players}`;
-  $('play').hidden = searching;
+  $('play').hidden = searching || matched;
   $('cancel').hidden = !searching;
+  $('logout').hidden = matched;
+  $('match-info').hidden = !match;
+  if (match) {
+    $('match-id').textContent = `#${match.id}`;
+    $('match-case').textContent = match.case_id;
+    $('match-team').textContent = match.team;
+    $('match-allies').textContent = match.allies.map(player => player.nickname).join(', ');
+    $('hint').textContent = match.state === 'FAILED'
+      ? 'Не удалось подготовить арену. Можно начать поиск снова.'
+      : match.state === 'RUNNING' ? 'Арена готова.' : 'Подготавливаем арену. Дождись запуска.';
+  }
 }
 
 async function api(path, method = 'GET', data) {

@@ -64,6 +64,19 @@
           </form>
         </section>
         <p id="submission-result" role="status"></p>
+        <section id="report" aria-label="Итоги матча" hidden>
+          <h3 id="report-title"></h3>
+          <p id="report-status" role="status">Загружаем отчёт…</p>
+          <div id="report-data" hidden>
+            <p>WINNER <strong id="report-winner"></strong></p>
+            <p>DURATION <output id="report-duration"></output></p>
+            <h4 class="red">RED</h4><ul id="report-red"></ul>
+            <h4 class="blue">BLUE</h4><ul id="report-blue"></ul>
+            <h4>SERVICE</h4><ul id="report-service"></ul>
+            <p class="help">Метрики рассчитаны по журналу проверок; состояние между проверками предполагается неизменным.</p>
+            <h4>TIMELINE</h4><ol id="report-timeline"></ol>
+          </div>
+        </section>
         <button id="play" type="button">НАЧАТЬ ИГРУ <span aria-hidden="true">→</span></button>
         <button id="cancel" type="button" hidden>Выйти из очереди</button>
         <button id="logout" class="secondary" type="button">Сменить nickname</button>

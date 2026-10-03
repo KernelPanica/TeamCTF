@@ -161,10 +161,16 @@ def test_winning_submission_removes_real_arena(lobby_db, monkeypatch):
 
 
 @pytest.mark.skipif(os.getenv('RUN_BROWSER') != '1', reason='requires Playwright Chromium')
-def test_browser_submission_updates_all_four_players(lobby_db):
+def test_browser_submission_updates_all_four_players(lobby_db, tmp_path):
     from playwright.sync_api import sync_playwright, expect
     url, engine = lobby_db
     match_id, keys, teams = game(lobby_db)
+    # More than one timeline page; the post-match UI must load every event once.
+    with Session(engine) as session:
+        started = session.get(Match, match_id).started_at
+        session.add_all([MatchEvent(match_id=match_id, type='KEY_SUBMITTED_INVALID',
+            timestamp=started, event_metadata={'team': 'RED'}) for _ in range(105)])
+        session.commit()
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
@@ -194,6 +200,14 @@ def test_browser_submission_updates_all_four_players(lobby_db):
                     expect(page.locator('#target-host')).to_have_text('192.0.2.2')
                     pages.append(page)
                 red = pages[0]
+                failures = {'report': 0}
+                def fail_first_report(route):
+                    failures['report'] += 1
+                    if failures['report'] == 1:
+                        route.fulfill(status=503, content_type='application/json', body='{"detail":"Unavailable"}')
+                    else:
+                        route.continue_()
+                red.route('**/report', fail_first_report)
                 red.get_by_label('KEY', exact=True).fill('wrong')
                 red.get_by_role('button', name='SUBMIT', exact=True).click()
                 expect(red.locator('#submission-result')).to_contain_text('Неверный ключ')
@@ -206,8 +220,34 @@ def test_browser_submission_updates_all_four_players(lobby_db):
                     expect(page.locator('#play')).to_be_visible()
                     assert page.locator('#ssh-password').text_content() == ''
                     assert keys['RED'] not in page.url
+                    expect(page.locator('#report-data')).to_be_visible(timeout=15000)
+                    expect(page.locator('#report-winner')).to_have_text('RED')
                     page.reload()
                     expect(page.locator('#match-result')).to_have_text('WINNER: RED')
+                    expect(page.locator('#report-winner')).to_have_text('RED', timeout=15000)
+                    expect(page.locator('#report-title')).to_have_text(f'MATCH #{match_id}')
+                    expect(page.locator('#report-duration')).to_contain_text('01:01:')
+                with Session(engine) as session:
+                    expected_count = len(session.scalars(select(MatchEvent).where(
+                        MatchEvent.match_id == match_id, MatchEvent.type != 'ARENA_OBSERVATION')).all())
+                for page in pages:
+                    expect(page.locator('#report-timeline li')).to_have_count(expected_count, timeout=15000)
+                    expect(page.locator('#report-red')).to_contain_text('106')
+                assert len({p.locator('#report-data').inner_text() for p in pages}) == 1
+                # Cleanup arrives after the result: polling appends it without duplicating history.
+                with Session(engine) as session:
+                    session.add(MatchEvent(match_id=match_id, type='ARENA_DESTROYED'))
+                    session.commit()
+                for page in pages:
+                    expect(page.locator('#report-timeline li')).to_have_count(expected_count + 1, timeout=12000)
+                    expect(page.locator('#report-timeline li').last).to_contain_text('Арена удалена')
+                red.set_viewport_size({'width': 360, 'height': 800})
+                assert red.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                red.screenshot(path=tmp_path / 'report.png', full_page=True)
+                for page in pages:
+                    page.get_by_role('button', name='НАЧАТЬ НОВУЮ ИГРУ', exact=True).click()
+                    expect(page.locator('#state-label')).to_have_text('SEARCHING FOR MATCH')
+                    expect(page.locator('#report')).to_be_hidden()
                 assert errors == []
             finally:
                 browser.close()

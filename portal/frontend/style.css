@@ -49,5 +49,9 @@ footer { border-top: 1px solid #2c3330; color: #89978a; font-size: 10px; }
 #access-status { color: #a1aaa3; }
 .playing .intro { display: none; }
 .playing main { grid-template-columns: 1fr; width: min(760px, 88vw); }
+#report { border-top: 1px solid #374032; padding: 16px 0; overflow-wrap: anywhere; }
+#report li { margin: 8px 0; line-height: 1.6; font-size: 13px; }
+#report-duration, #report-timeline { font-family: ui-monospace, monospace; }
+#report h4 { margin-bottom: 8px; }
 @media (max-width: 760px) { main { grid-template-columns: 1fr; gap: 40px; margin: 40px auto; } h1 { font-size: 48px; } .lobby { padding: 24px 22px 0; } header, footer { padding: 22px 6vw; } footer { flex-wrap: wrap; } .badge { font-size: 9px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }

@@ -4,6 +4,65 @@ let token = sessionStorage.getItem(storageKey);
 let busy = false;
 let activeMatch = null;
 let clock = null;
+let reportMatch = null;
+let reportLoaded = false;
+let eventCursor = 0;
+
+function duration(seconds) {
+  const value = Math.floor(Math.abs(seconds));
+  const parts = [Math.floor(value / 60) % 60, value % 60];
+  if (value >= 3600) parts.unshift(Math.floor(value / 3600));
+  return (seconds < 0 ? '-' : '') + parts.map(n => String(n).padStart(2, '0')).join(':');
+}
+
+function listText(id, lines) {
+  $(id).replaceChildren(...lines.map(line => {
+    const item = document.createElement('li');
+    item.textContent = line;
+    return item;
+  }));
+}
+
+async function loadReport(match) {
+  if (!reportLoaded) {
+    const report = await api(`/matches/${match.id}/report`);
+    $('report-title').textContent = `MATCH #${report.match_id}`;
+    $('report-winner').textContent = report.winner;
+    $('report-duration').textContent = duration(report.duration_seconds);
+    listText('report-red', report.notes.RED);
+    listText('report-blue', report.notes.BLUE);
+    listText('report-service', Object.entries(report.services).map(([name, data]) =>
+      `${name}: uptime ${duration(data.uptime_seconds)}; downtime ${duration(data.downtime_seconds)}; ` +
+      `самый длинный простой ${duration(data.longest_downtime_seconds)}; ` +
+      `неизвестно ${duration(data.unknown_seconds)}; uptime ${data.uptime_percent === null ? '—' : data.uptime_percent.toFixed(2) + '%'}.`));
+    if (!Object.keys(report.services).length) listText('report-service', ['Нет данных о состоянии сервисов.']);
+    reportLoaded = true;
+    $('report-data').hidden = false;
+  }
+  const labels = {
+    MATCH_CREATED: 'Матч создан', TARGET_STARTED: 'Target запущен', MATCH_STARTED: 'Матч начался',
+    TARGET_HEALTHY: 'Target прошёл health-check', BLUE_FIRST_LOGIN: 'SSH-вход BLUE (по логу target)',
+    SERVICE_UP: 'Сервис доступен', SERVICE_DOWN: 'Сервис недоступен', SERVICE_RESTORED: 'Сервис восстановлен',
+    EXPLOIT_AVAILABLE: 'Exploit доступен', EXPLOIT_BLOCKED: 'Exploit заблокирован', EXPLOIT_RESTORED: 'Exploit снова доступен',
+    BLUE_SECURING_STARTED: 'Стабилизация началась', BLUE_SECURING_CANCELLED: 'Стабилизация отменена',
+    BLUE_SECURED_TARGET: 'Стабилизация пройдена', BLUE_KEY_ISSUED: 'BLUE_KEY выдан',
+    KEY_SUBMITTED_INVALID: 'Неверный ключ', KEY_SUBMITTED_RED: 'Ключ RED принят', KEY_SUBMITTED_BLUE: 'Ключ BLUE принят',
+    MATCH_FINISHED: 'Матч завершён', ARENA_DESTROYED: 'Арена удалена',
+  };
+  while (true) {
+    const page = await api(`/matches/${match.id}/events?after=${eventCursor}&limit=100`);
+    for (const event of page.events) {
+      const item = document.createElement('li');
+      const elapsed = (Date.parse(event.timestamp) - Date.parse(match.started_at)) / 1000;
+      item.textContent = `${duration(elapsed)} ${labels[event.type] || event.type}` +
+        (event.metadata.service ? ` · ${event.metadata.service}` : '');
+      $('report-timeline').append(item);
+    }
+    eventCursor = page.cursor;
+    if (page.events.length < 100) break;
+  }
+  $('report-status').textContent = '';
+}
 
 function clearAccess() {
   $('target-info').hidden = $('admin-access').hidden = $('issued-key').hidden = true;
@@ -18,7 +77,19 @@ function tick() {
 
 function render(state) {
   const running = state?.match?.state === 'RUNNING';
-  document.body.classList.toggle('playing', running);
+  const finished = state?.match?.state === 'FINISHED';
+  const nextReport = finished ? state.match.id : null;
+  if (reportMatch !== nextReport) {
+    reportMatch = nextReport;
+    reportLoaded = false;
+    eventCursor = 0;
+    $('report-data').hidden = true;
+    $('report-title').textContent = '';
+    $('report-timeline').replaceChildren();
+    $('report-status').textContent = 'Загружаем отчёт…';
+  }
+  $('report').hidden = !finished;
+  document.body.classList.toggle('playing', running || finished);
   if (!running || activeMatch !== state.match.id) {
     clearAccess();
     $('key').value = '';
@@ -34,7 +105,7 @@ function render(state) {
   tick();
   $('register').hidden = Boolean(state);
   $('player-panel').hidden = !state;
-  $('lobby-title').textContent = running ? 'Матч идёт.' : state ? 'Ты в лобби.' : 'Готов к игре?';
+  $('lobby-title').textContent = finished ? 'Матч завершён.' : running ? 'Матч идёт.' : state ? 'Ты в лобби.' : 'Готов к игре?';
   $('hint').textContent = state ? 'Начни поиск или дождись соперников в очереди.' : 'Выбери nickname, чтобы войти в лобби.';
   if (!state) return;
   $('player-name').textContent = state.player.nickname;
@@ -44,6 +115,7 @@ function render(state) {
   $('state-label').textContent = match ? match.state : searching ? 'SEARCHING FOR MATCH' : 'READY';
   $('queue-count').textContent = `Игроков в очереди: ${state.queued_players}`;
   $('play').hidden = searching || matched;
+  $('play').textContent = finished ? 'НАЧАТЬ НОВУЮ ИГРУ' : 'НАЧАТЬ ИГРУ';
   $('cancel').hidden = !searching;
   $('logout').hidden = matched;
   $('match-info').hidden = !match;
@@ -91,6 +163,15 @@ async function api(path, method = 'GET', data) {
 async function refresh() {
   const state = await api('session');
   render(state);
+  if (state.match?.state === 'FINISHED') {
+    try {
+      await loadReport(state.match);
+    } catch (error) {
+      $('report-status').textContent = 'Не удалось загрузить отчёт или события. Повторяем запрос.';
+      throw error;
+    }
+    return;
+  }
   if (!activeMatch) return;
   try {
     const access = await api(`/matches/${activeMatch}/access`);

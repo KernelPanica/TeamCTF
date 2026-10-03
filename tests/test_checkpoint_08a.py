@@ -33,6 +33,25 @@ ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "test-arena-token-" + "x" * 32
 
 
+def observation_matches(observation, exploit, surface, health):
+    return (observation.red_exploit == exploit and observation.surface == surface
+            and observation.health["web"].status == health)
+
+
+@pytest.mark.parametrize("health,exploit,surface", [
+    ("UNHEALTHY", "UNREACHABLE", "UNAVAILABLE"),
+    ("HEALTHY", "PATCHED", "AVAILABLE"),
+])
+def test_observation_wait_ignores_service_transition(health, exploit, surface):
+    mixed = Observation(health={"web": {"status": "HEALTHY" if health == "UNHEALTHY" else "UNHEALTHY", "reason": "OK"}},
+        exploit=exploit, surface=surface, red_exploit=exploit,
+        red_services={"web": surface}, duration_seconds=0)
+    settled = mixed.model_copy(update={"health": {"web": mixed.health["web"].model_copy(update={"status": health})}})
+    assert not observation_matches(mixed, exploit, surface, health)
+    assert observation_matches(settled, exploit, surface, health)
+    assert not observation_matches(settled.model_copy(update={"red_exploit": "ERROR"}), exploit, surface, health)
+
+
 class FakeExecutor:
     def __init__(self):
         self.created = []
@@ -442,7 +461,7 @@ def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path, monkeyp
                     await asyncio.sleep(0.1)
             cursor = 0
 
-            async def observed(exploit, surface="AVAILABLE"):
+            async def observed(exploit, surface="AVAILABLE", health="HEALTHY"):
                 nonlocal cursor
                 deadline = time.monotonic() + 120
                 while True:
@@ -450,7 +469,9 @@ def test_remote_https_real_target_checks_isolation_and_cleanup(tmp_path, monkeyp
                     cursor = page.cursor
                     for event in page.events:
                         observation = event.observation
-                        if observation.red_exploit == exploit and observation.surface == surface:
+                        # Checks run sequentially: a service transition can occur
+                        # between health and RED checks in the same observation.
+                        if observation_matches(observation, exploit, surface, health):
                             return observation
                     assert time.monotonic() < deadline, "desired observation not received"
                     await asyncio.sleep(0.2)
@@ -481,7 +502,7 @@ for host in sys.argv[1:-1]:
             runtime._docker("exec", target["Id"], "iptables", "-F")
             runtime._docker("exec", target["Id"], "python3", "-c", script, management_ip, gateway, str(port))
             runtime._docker("exec", target["Id"], "service", "cyberrange-web", "stop")
-            stopped = await observed("UNREACHABLE", "UNAVAILABLE")
+            stopped = await observed("UNREACHABLE", "UNAVAILABLE", "UNHEALTHY")
             assert stopped.health["web"].status == "UNHEALTHY"
             runtime._docker("exec", target["Id"], "python3", "-c",
                 "from pathlib import Path; p=Path('/opt/service/server.py'); s=p.read_text(); "

@@ -5,9 +5,27 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .access import authenticated_player, bearer
-from .models import MatchEvent, MatchPlayer
+from .models import Match, MatchEvent, MatchPlayer
+from .analyzer import analyze_match
 
 router = APIRouter()
+
+
+@router.get('/matches/{match_id}/report')
+def get_report(match_id: int, request: Request, response: Response,
+               credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
+    response.headers['Cache-Control'] = 'no-store'
+    with Session(request.app.state.engine) as session:
+        player = authenticated_player(session, credentials)
+        if session.get(MatchPlayer, (match_id, player.id)) is None:
+            raise HTTPException(404, 'Match not found')
+        match = session.get(Match, match_id)
+        events = session.scalars(select(MatchEvent).where(
+            MatchEvent.match_id == match_id, MatchEvent.type != 'ARENA_OBSERVATION')).all()
+        try:
+            return analyze_match(match, events)
+        except ValueError:
+            raise HTTPException(409, 'Report requires a finished match with recorded start/end times')
 
 
 @router.get('/matches/{match_id}/events')

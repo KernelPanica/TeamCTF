@@ -100,6 +100,10 @@ class ArenaService:
             entry.status.error = "EXECUTION_FAILED"
             entry.status.blue_password = None
             entry.status.endpoints = []
+            try:
+                await asyncio.to_thread(self.executor.destroy, request.match_id)
+            except Exception:
+                entry.status.error = "CLEANUP_FAILED"
 
     async def get_match(self, match_id):
         return self.execution(match_id).status.model_copy(deep=True)

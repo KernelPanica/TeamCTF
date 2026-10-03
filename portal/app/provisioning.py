@@ -28,9 +28,27 @@ async def provision_arena(session, match, case, provider: ArenaProvider):
         session.commit()
     request = CreateMatch(match_id=match.id, run_id=match.arena_run_id,
                           case_id=case.id, red_key=match.red_key)
-    status = await provider.create_match(request)
+    # A known execution must survive a Portal restart unchanged. Never POST a
+    # replacement to a restarted Agent that has forgotten this run.
+    if match.arena_instance_id:
+        try:
+            status = await provider.get_match(match.id)
+        except ArenaError as error:
+            if error.status != 404:
+                raise
+            from .arena_reconcile import mark_lost
+            mark_lost(session, match)
+            await destroy_arena(session, match, provider)
+            raise ArenaError("ARENA_LOST") from None
+    else:
+        status = await provider.create_match(request)
     if status.match_id != match.id or str(status.run_id) != match.arena_run_id:
         raise ArenaError("WRONG_EXECUTION")
+    if match.arena_instance_id and match.arena_instance_id != str(status.instance_id):
+        from .arena_reconcile import mark_lost
+        mark_lost(session, match)
+        await destroy_arena(session, match, provider)
+        raise ArenaError("ARENA_LOST")
     match.arena_instance_id = str(status.instance_id)
     session.commit()
     # Transport errors preserve the durable run ID for an idempotent retry.
@@ -38,6 +56,11 @@ async def provision_arena(session, match, case, provider: ArenaProvider):
     while True:
         if status.match_id != match.id or str(status.run_id) != match.arena_run_id:
             raise ArenaError("WRONG_EXECUTION")
+        if str(status.instance_id) != match.arena_instance_id:
+            from .arena_reconcile import mark_lost
+            mark_lost(session, match)
+            await destroy_arena(session, match, provider)
+            raise ArenaError("ARENA_LOST")
         if status.state != "PROVISIONING":
             break
         if asyncio.get_running_loop().time() >= deadline:

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from .cases import CaseCatalog
@@ -9,6 +10,7 @@ from .health import watch_health
 from .victory import watch_victory
 from .arena_provider import configured_provider
 from shared.arena import ArenaError
+from .arena_reconcile import reconcile_once
 
 
 async def run_watcher(engine, args):
@@ -20,9 +22,25 @@ async def run_watcher(engine, args):
             print(json.dumps(result), flush=True)
 
 
+async def recover(engine):
+    # Opening LocalArenaProvider performs destructive startup cleanup; recovery
+    # of a live Agent must use the remote transport exclusively.
+    if os.environ.get('ARENA_PROVIDER', 'remote') != 'remote':
+        raise ValueError('Portal recovery requires RemoteArenaProvider')
+    async with configured_provider() as provider:
+        if provider is None:
+            raise ArenaError('ARENA_NOT_CONFIGURED')
+        pending = await reconcile_once(engine, provider)
+        if pending:
+            raise ArenaError(f'RECOVERY_PENDING: {pending}')
+        print('Portal arena recovery completed')
+
+
 def main():
     parser = argparse.ArgumentParser(prog="cyberrange")
     commands = parser.add_subparsers(dest="command", required=True)
+    recovery = commands.add_parser('portal').add_subparsers(dest='area', required=True)
+    recovery.add_parser('arena').add_argument('action', choices=['recovery'])
     cases = commands.add_parser("cases").add_subparsers(dest="action", required=True)
     validate = cases.add_parser("validate")
     validate.add_argument("--directory", type=Path, default=Path("arena/cases"))
@@ -33,10 +51,10 @@ def main():
         watch.add_argument("--directory", type=Path, default=Path("arena/cases"))
         watch.add_argument("--interval", type=float, default=2)
     args = parser.parse_args()
-    if args.command in ("health", "victory"):
+    if args.command in ("health", "victory", "portal"):
         engine = make_engine()
         try:
-            asyncio.run(run_watcher(engine, args))
+            asyncio.run(recover(engine) if args.command == 'portal' else run_watcher(engine, args))
         except (OSError, ValueError, ArenaError) as exc:
             print(f"ERROR: {exc}")
             return 1

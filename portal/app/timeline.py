@@ -20,6 +20,8 @@ def get_report(match_id: int, request: Request, response: Response,
         if session.get(MatchPlayer, (match_id, player.id)) is None:
             raise HTTPException(404, 'Match not found')
         match = session.get(Match, match_id)
+        if match.report is not None:
+            return match.report
         events = session.scalars(select(MatchEvent).where(
             MatchEvent.match_id == match_id, MatchEvent.type != 'ARENA_OBSERVATION')).all()
         try:

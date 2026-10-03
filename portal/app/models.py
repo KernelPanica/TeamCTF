@@ -50,6 +50,7 @@ class Match(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
     winner: Mapped[Team | None] = mapped_column(Enum(Team, create_constraint=True, name="winner_team"))
+    report: Mapped[dict | None] = mapped_column(JSON)
     target_host: Mapped[str | None]
     blue_password: Mapped[str | None]
     red_key: Mapped[str | None]

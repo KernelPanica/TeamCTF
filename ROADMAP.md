@@ -1904,6 +1904,26 @@ match_id=<id>
 
 ## CHECKPOINT 16
 
+**Статус: completed (2026-10-04).**
+
+- Миграция 0009: snapshot отчёта сохраняется атомарно с winner/events/cleanup intent;
+  report API возвращает его после restart, для старой истории остаётся analyzer fallback.
+- Startup Portal выполняет reconciliation перед matchmaking; известный provisioning
+  возобновляется через GET, с защитой от исчезновения/замены Arena instance.
+- Arena удаляет частичные ресурсы при ошибке create; failed cleanup можно повторить.
+  ARENA_LOST сохраняется однократно, DB-сбой не останавливает периодический reconciler.
+- Ручные команды: `python -m arena.app.cli reconcile` (Agent остановлен, owner задан)
+  и `cyberrange portal arena recovery` (Portal остановлен, RemoteArenaProvider).
+- Тесты дополняют существующие crash/restart проверки 8A/10/12: сохранённый отчёт,
+  неизвестный/заменённый instance, частичная подготовка, повтор после cleanup failure,
+  CLI boundary и реальное удаление ресурсов при неудавшемся provisioning.
+- Полная проверка: `sudo bash tests/checkpoint_16.sh`.
+- Общая локальная регрессия: **189 passed, 10 Docker skipped**, включая Chromium;
+  после добавления двух проверок замены instance/legacy clock затронутые suites:
+  **16 passed, 3 skipped**. Всего локально проверен 191 тест; 10 требуют Docker-хоста.
+- Legacy-матчи без started_at могут завершиться и очиститься без выдуманного отчёта.
+- Пользователь подтвердил **201 passed**, `CHECKPOINT 16 PASSED` на Docker-хосте.
+
 Проверить:
 
 ### Normal match

@@ -17,7 +17,7 @@ from .lobby import router as lobby_router
 from .submission import router as submission_router
 from .timeline import router as timeline_router
 from .arena_provider import configured_provider
-from .arena_reconcile import reconcile_forever
+from .arena_reconcile import reconcile_forever, reconcile_once
 from .matchmaking import matchmaker
 
 
@@ -29,6 +29,7 @@ def create_app(database_url=None, arena_provider=None, cases_directory=None):
         app.state.arena_provider = provider
         tasks = []
         if provider is not None:
+            await reconcile_once(app.state.engine, provider)
             tasks = [asyncio.create_task(reconcile_forever(app.state.engine, provider)),
                      asyncio.create_task(matchmaker(app.state.engine, provider, directory))]
         try:

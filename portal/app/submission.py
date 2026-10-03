@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy.orm import Session
 
 from .access import authenticated_player, bearer
 from .models import Match, MatchEvent, MatchPlayer, MatchState, Team
 from .states import transition
+from .analyzer import analyze_match
 
 router = APIRouter()
 
@@ -57,5 +58,11 @@ def submit_key(match_id: int, body: Submission, request: Request, response: Resp
         match.target_host = match.blue_password = match.red_key = match.blue_key = None
         match.arena_endpoints = None
         match.arena_cleanup_pending = True
+        session.flush()
+        # Legacy matches may predate the persisted clock; a missing report must
+        # not prevent a valid key from winning or invent a start timestamp.
+        if match.started_at is not None and match.started_at <= now:
+            match.report = analyze_match(match, session.scalars(select(MatchEvent).where(
+                MatchEvent.match_id == match.id, MatchEvent.type != 'ARENA_OBSERVATION')).all())
         session.commit()
         return {"result": f"{member.team}_WIN", "winner": member.team}

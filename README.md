@@ -93,6 +93,11 @@ PORTAL_BIND=0.0.0.0
 firewall сервера. В production лучше оставить binding на localhost и поставить
 HTTPS reverse proxy.
 
+Примеры переменных находятся в [portal/.env.example](portal/.env.example) и
+[arena/.env.example](arena/.env.example). Реальные `.env` и TLS-ключи не входят
+в Git. В Arena `ARENA_CERT_DIR` должен содержать `tls.crt` и `tls.key`; Portal
+получает только публичный CA-сертификат.
+
 ## Cases и игровой цикл
 
 Cases — доверенный код оператора, не пользовательские загрузки. Пример:

@@ -31,6 +31,10 @@ mkdir -p data
 `PORTAL_BIND=0.0.0.0` в `.env`, затем разрешите TCP/8000 в firewall или
 используйте HTTPS reverse proxy.
 
+Начните с `cp .env.example .env`. `ARENA_TOKEN` должен быть случайным и
+одинаковым на Portal и Arena; реальный `.env` не коммитьте. Для подключения к
+сертификату Arena задайте `ARENA_CA_FILE` и смонтируйте только CA-сертификат.
+
 Portal работает без Docker при использовании RemoteArenaProvider.
 По умолчанию выбран remote-режим. Без ARENA_URL/ARENA_TOKEN доступны лобби
 и история; игровые окружения не создаются. Настройте ARENA_URL (HTTPS),

@@ -63,6 +63,17 @@ Set a stable unique `ARENA_OWNER`, a separate `ARENA_GAME_IP`, dedicated
 match `ARENA_URL`. Keep these variables on Arena; do not copy Portal `.env`,
 SQLite, session secrets or SSH private keys there.
 
+Скопируйте `.env.example` в `.env`. Каталог `ARENA_CERT_DIR` должен содержать
+ровно файлы `tls.crt` и `tls.key`; Compose монтирует его в `/run/arena`, а Agent
+читает `/run/arena/tls.crt` и `/run/arena/tls.key`. Для Let’s Encrypt можно
+скопировать target-файлы с раскрытием симлинков:
+
+```bash
+cp --dereference /etc/letsencrypt/live/arena.mtuci.fun/fullchain.pem "$ARENA_CERT_DIR/tls.crt"
+cp --dereference /etc/letsencrypt/live/arena.mtuci.fun/privkey.pem "$ARENA_CERT_DIR/tls.key"
+chmod 600 "$ARENA_CERT_DIR/tls.key"
+```
+
 Management and game may share one IP when ports are distinct. Set
 `ARENA_SINGLE_IP=1` explicitly in that case; the management port is reserved
 from the game pool and remains restricted to `ARENA_PORTAL_IP` by firewall.

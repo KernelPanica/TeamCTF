@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: portal/Dockerfile
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${PORTAL_BIND:-127.0.0.1}:8000:8000"
     environment:
       DATABASE_URL: sqlite:////app/data/cyberrange.db
       ARENA_PROVIDER: remote

@@ -45,9 +45,12 @@ registry против release.json; Compose использует именно э
 1. Проверьте `sha256sum -c SHA256SUMS` в каталоге артефактов и доверенный источник
    самого manifest. Распакуйте portal-v0.1.0.tar.gz только на Portal, arena-v0.1.0.tar.gz
    только на Arena. Checkout, соседние папки исходников и сборка на серверах не нужны.
-2. Выделите private management IPv4 Arena и отдельный game IPv4, доступный игрокам.
-   Portal должен достигать management адреса. Узнайте фактический source IP Portal
-   с учётом NAT; только он разрешается host firewall Arena.
+2. Выделите management IPv4 Arena и game IPv4, доступный игрокам. Они могут
+   совпадать, если в `.env` явно задано `ARENA_SINGLE_IP=1`: management port
+   `8443` резервируется и не используется игровыми сервисами.
+   Если private/VPN сети нет, допустим второй публичный адрес, но firewall должен
+   разрешать management только фактическому source IP Portal с учётом NAT. Не
+   открывайте management port всему Интернету.
 3. Выпустите TLS certificate Arena с SAN management DNS/IP от вашей CA. Поместите
    tls.crt/tls.key в `arena/tls/`; private key доступен только оператору/Agent.
    На Portal передайте **только CA certificate**, как `portal/arena-ca.pem`.

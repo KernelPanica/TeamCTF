@@ -26,7 +26,10 @@ mkdir -p data
 
 Или `docker compose up --build -d --wait`: корневой Compose подключает
 `portal/compose.yaml`. База по-прежнему находится в корневом `data/`,
-имя Compose-сервиса `backend` сохранено для совместимости.
+имя Compose-сервиса `backend` сохранено для совместимости. По умолчанию порт
+доступен только на localhost. Для доступа с другой машины задайте
+`PORTAL_BIND=0.0.0.0` в `.env`, затем разрешите TCP/8000 в firewall или
+используйте HTTPS reverse proxy.
 
 Portal работает без Docker при использовании RemoteArenaProvider.
 По умолчанию выбран remote-режим. Без ARENA_URL/ARENA_TOKEN доступны лобби

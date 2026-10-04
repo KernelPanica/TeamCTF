@@ -27,6 +27,10 @@ Stage 17 — упаковка и установка релиза `0.1.0` — в 
 Portal не требует Docker и не передаёт Arena свою БД, сессии или BLUE_KEY.
 Arena принимает только игровые операции; generic shell/exec endpoint отсутствует.
 Host firewall изолирует target от management API и внутренних сервисов.
+Если VPN/private-сети нет, Arena может использовать второй публичный IPv4 для
+management; firewall тогда разрешает этот порт только адресу Portal.
+При одном IP задайте `ARENA_SINGLE_IP=1`; management (`8443`) и игровые порты
+(`30000–39999`) остаются раздельными.
 Для разработки на одной машине доступен `LocalArenaProvider` с тем же runtime.
 
 ## Быстрый старт из исходников
@@ -76,6 +80,18 @@ docker compose logs backend
 передайте настройки отдельной Arena. Private CA подключается через
 [portal/arena-ca.yaml](portal/arena-ca.yaml). SQLite хранится в `data/cyberrange.db`,
 миграции применяются перед запуском. Остановка: `docker compose down`.
+
+В development Compose порт по умолчанию доступен только на самом сервере:
+проверяйте `curl http://127.0.0.1:8000/`. Чтобы открыть frontend с другой машины,
+создайте `.env` и задайте:
+
+```dotenv
+PORTAL_BIND=0.0.0.0
+```
+
+После этого выполните `docker compose up -d --build` и разрешите TCP/8000 в
+firewall сервера. В production лучше оставить binding на localhost и поставить
+HTTPS reverse proxy.
 
 ## Cases и игровой цикл
 

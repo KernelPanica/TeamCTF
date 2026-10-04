@@ -6,9 +6,10 @@ services:
     environment:
       ARENA_OWNER: ${ARENA_OWNER:?set stable unique owner}
       ARENA_TOKEN: ${ARENA_TOKEN:?set dedicated token}
-      ARENA_MANAGEMENT_IP: ${ARENA_MANAGEMENT_IP:?set private management IP}
+      ARENA_MANAGEMENT_IP: ${ARENA_MANAGEMENT_IP:?set the Arena management IP}
       ARENA_PORTAL_IP: ${ARENA_PORTAL_IP:?set actual Portal source IPv4}
       ARENA_MANAGEMENT_PORT: ${ARENA_MANAGEMENT_PORT:-8443}
+      ARENA_SINGLE_IP: ${ARENA_SINGLE_IP:-0}
       ARENA_GAME_IP: ${ARENA_GAME_IP:?set separate game IP}
       ARENA_PUBLIC_HOST: ${ARENA_PUBLIC_HOST:?set player reachable host}
       ARENA_GAME_PORT_MIN: ${ARENA_GAME_PORT_MIN:-30000}

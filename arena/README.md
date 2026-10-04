@@ -57,11 +57,15 @@ not enabled. Do not run multiple Agent workers or replicas against one owner.
 Before migration, destroy old active environments using the old controller.
 Historical SQLite rows are retained; old live arenas are not adopted.
 
-Set a stable unique `ARENA_OWNER`, a separate `ARENA_GAME_IP`, private
+Set a stable unique `ARENA_OWNER`, a separate `ARENA_GAME_IP`, dedicated
 `ARENA_MANAGEMENT_IP`, the allowed source `ARENA_PORTAL_IP`, player-reachable `ARENA_PUBLIC_HOST`, `ARENA_TOKEN`, and
 `ARENA_CERT_DIR` containing `tls.crt` and `tls.key`. The certificate SAN must
 match `ARENA_URL`. Keep these variables on Arena; do not copy Portal `.env`,
 SQLite, session secrets or SSH private keys there.
+
+Management and game may share one IP when ports are distinct. Set
+`ARENA_SINGLE_IP=1` explicitly in that case; the management port is reserved
+from the game pool and remains restricted to `ARENA_PORTAL_IP` by firewall.
 
 Install host policy before starting Agent (from the repository with its venv):
 
@@ -78,11 +82,15 @@ rule follows the game-network deny rule and permits only `ARENA_PORTAL_IP` to
 `ARENA_MANAGEMENT_IP:ARENA_MANAGEMENT_PORT` (default 8443); every other source is
 dropped. Preserve these exported configuration variables when using sudo.
 
-Management listens only on the configured private address. Host policy denies
+Management listens only on the configured management address. If no private/VPN
+network is available, a second public IPv4 is supported, but the host policy
+must allow the port only from `ARENA_PORTAL_IP`; never expose it to the Internet.
+Host policy denies
 new target-to-host connections, including management and host gateway, and new
 connections outside the target's bridge. Responses to player/controller traffic
 and same-bridge RED probes remain possible. Bind management behind a private
-network/firewall accessible only to Portal; do not publish it on a public NIC.
+network/firewall accessible only to Portal; a private management network remains
+preferable.
 
 Remote targets publish SSH and required service ports on `ARENA_GAME_IP`; Docker
 binds explicitly allocated host ports. `ARENA_GAME_PORT_MIN`/`ARENA_GAME_PORT_MAX`
@@ -104,7 +112,8 @@ only Arena, shared contracts and cases; no Portal database or code is copied.
 
 For a native Agent process, set the same variables plus `ARENA_TLS_CERT`,
 `ARENA_TLS_KEY` and `ARENA_CASES`, then run `python -m arena.app.serve` with
-Docker/firewall permissions. The entrypoint requires TLS and a private bind IP.
+Docker/firewall permissions. The entrypoint requires TLS and a dedicated
+non-loopback IPv4 bind IP.
 
 ## Operations and recovery
 

@@ -11,6 +11,12 @@ class WireModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ArenaInfo(WireModel):
+    api_version: int
+    version: str
+    ready: bool
+
+
 class CreateMatch(WireModel):
     match_id: Annotated[int, Field(gt=0)]
     run_id: UUID

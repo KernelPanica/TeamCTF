@@ -1,0 +1,22 @@
+services:
+  portal:
+    image: __IMAGE__
+    ports:
+      - "${PORTAL_BIND:-127.0.0.1}:8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////data/cyberrange.db
+      ARENA_PROVIDER: remote
+      ARENA_URL: ${ARENA_URL:?set Arena HTTPS URL}
+      ARENA_TOKEN: ${ARENA_TOKEN:?set Arena API token}
+      ARENA_CA_FILE: /run/arena-ca.pem
+    volumes:
+      - portal-data:/data
+      - ./arena-ca.pem:/run/arena-ca.pem:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  portal-data:

@@ -19,10 +19,12 @@ from .timeline import router as timeline_router
 from .arena_provider import configured_provider
 from .arena_reconcile import reconcile_forever, reconcile_once
 from .matchmaking import matchmaker
+from .cases import DEFAULT_CASES
+from shared.version import VERSION, API_VERSION
 
 
 def create_app(database_url=None, arena_provider=None, cases_directory=None):
-    directory = Path(cases_directory or os.environ.get("PORTAL_CASES", "arena/cases"))
+    directory = Path(cases_directory or os.environ.get("PORTAL_CASES", DEFAULT_CASES))
 
     @asynccontextmanager
     async def controllers(app, provider):
@@ -60,6 +62,9 @@ def create_app(database_url=None, arena_provider=None, cases_directory=None):
     app.include_router(lobby_router)
     app.include_router(submission_router)
     app.include_router(timeline_router)
+    @app.get('/version')
+    def version():
+        return {'version': VERSION, 'arena_api_version': API_VERSION}
     frontend = Path(__file__).resolve().parents[1] / "frontend"
     app.mount("/static", StaticFiles(directory=frontend), name="static")
 

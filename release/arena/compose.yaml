@@ -1,0 +1,22 @@
+services:
+  agent:
+    image: __IMAGE__
+    network_mode: host
+    cap_add: [NET_ADMIN]
+    environment:
+      ARENA_OWNER: ${ARENA_OWNER:?set stable unique owner}
+      ARENA_TOKEN: ${ARENA_TOKEN:?set dedicated token}
+      ARENA_MANAGEMENT_IP: ${ARENA_MANAGEMENT_IP:?set private management IP}
+      ARENA_PORTAL_IP: ${ARENA_PORTAL_IP:?set actual Portal source IPv4}
+      ARENA_MANAGEMENT_PORT: ${ARENA_MANAGEMENT_PORT:-8443}
+      ARENA_GAME_IP: ${ARENA_GAME_IP:?set separate game IP}
+      ARENA_PUBLIC_HOST: ${ARENA_PUBLIC_HOST:?set player reachable host}
+      ARENA_GAME_PORT_MIN: ${ARENA_GAME_PORT_MIN:-30000}
+      ARENA_GAME_PORT_MAX: ${ARENA_GAME_PORT_MAX:-39999}
+      ARENA_RESERVED_PORTS: ${ARENA_RESERVED_PORTS:-22,80,443}
+      ARENA_TLS_CERT: /run/arena/tls.crt
+      ARENA_TLS_KEY: /run/arena/tls.key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./tls:/run/arena:ro
+    restart: unless-stopped

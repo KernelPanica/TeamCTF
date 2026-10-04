@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from shared.arena import CreateMatch
+from shared.version import VERSION, API_VERSION
 
 
 bearer = HTTPBearer(auto_error=False)
@@ -15,6 +16,11 @@ def authenticate(request: Request, credentials: HTTPAuthorizationCredentials | N
 
 
 router = APIRouter(prefix="/v1", dependencies=[Depends(authenticate)])
+
+
+@router.get('/info')
+async def info(request: Request):
+    return {'api_version': API_VERSION, 'version': VERSION, 'ready': request.app.state.service.ready}
 
 
 def status_json(status):

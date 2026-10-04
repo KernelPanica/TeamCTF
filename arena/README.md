@@ -1,4 +1,9 @@
-# Portal / Arena — checkpoint 8A
+# Arena Agent
+
+This guide covers development from a checkout and the Portal/Arena trust boundary.
+For candidate deployment without building on the server, see the
+[release installation guide](../release/README.md). Checkpoints 1–16, including
+8A, have passed; Stage 17 release acceptance on two clean hosts remains pending.
 
 Portal owns SQLite, players, teams, game state, RED_KEY/BLUE_KEY, decisions and
 history. Arena owns disposable Docker environments and checker execution.
@@ -16,13 +21,15 @@ Install the project on the trusted Portal machine, then:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[test]'
+mkdir -p data
 export DATABASE_URL=sqlite:///data/cyberrange.db
 export ARENA_PROVIDER=remote
 export ARENA_URL=https://arena-management.example:8443
-export ARENA_TOKEN='<dedicated random token, at least 32 characters>'
+# Load ARENA_TOKEN from a protected environment file (at least 32 characters).
 export ARENA_CA_FILE=/etc/cyberrange/arena-ca.crt
-.venv/bin/alembic upgrade head
-.venv/bin/uvicorn portal.app.main:app --host 127.0.0.1 --port 8000
+.venv/bin/cyberrange migrate
+.venv/bin/cyberrange arena-check
+.venv/bin/uvicorn portal.app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 Omit `ARENA_CA_FILE` for a certificate trusted by the system CA store. HTTPS,
@@ -105,10 +112,18 @@ Docker/firewall permissions. The entrypoint requires TLS and a private bind IP.
 `get_events(id, after=0)` and `destroy_match(id)`. Portal provisioning functions
 are async and accept a provider; they no longer accept DockerRuntime.
 
-Agent exposes only authenticated POST `/v1/matches`, GET `/v1/matches/{id}`, GET
+Agent exposes authenticated GET `/v1/info`, POST `/v1/matches`, GET `/v1/matches/{id}`, GET
 `/v1/matches/{id}/events?after=N` and DELETE `/v1/matches/{id}`. Unversioned routes
 are not supported; update Portal and Agent together after stopping old matches. No shell/exec/Docker API is
 available. Cases are installed by the Arena operator, not uploaded through API.
+Before creating a match, Portal checks `/v1/info` for readiness, API version 1
+and matching release version 0.1.0. `cyberrange arena-check` performs this check
+without provisioning. Update both services together.
+
+Source development builds the case target through Docker. Release Agent instead
+loads `ARENA_CASE_IMAGES`, a JSON case-ID-to-image-digest manifest built into its
+image, and uses prebuilt targets. For a private registry, pre-pull the target
+on the Arena host; do not pass registry credentials to target containers.
 
 Creation returns 202 with an execution state. Poll until READY or FAILED.
 Repeating a create with the same ID/run/parameters reuses the operation; different
@@ -122,7 +137,7 @@ Portal persists observations with a cursor transaction and records downtime and
 game decisions itself. Cursor gaps are explicit failures and cancel securing;
 they never count as successful defense. Run one game observer per match.
 No fresh observation does not grant a key; a gap longer than 30 seconds cancels
-the existing Stage 8 countdown. Stage 8 development remains paused until 8A passes.
+the defense stabilization countdown.
 
 On Agent restart, startup removes resources carrying its owner label before
 accepting creates. No full match database or credentials are recovered. Portal
@@ -150,11 +165,12 @@ Prepare the venv and run on the Linux Docker host as root:
 
 ```bash
 .venv/bin/pip install -e '.[test,browser]'
-sudo bash tests/checkpoint_08a.sh
+sudo .venv/bin/python -m playwright install chromium
+sudo bash tests/checkpoint_17.sh
 ```
 
-This explicitly installs/verifies the dedicated host firewall chains, runs the
-Stage 1–8 regression, Stage 9 API regression and 8A contract/integration tests.
+This explicitly installs/verifies the dedicated host firewall chains and runs
+the current source, browser and packaging regression, including 8A integration.
 The real integration starts a temporary Agent with a trusted test TLS certificate,
 creates Ubuntu 20.04 through RemoteArenaProvider, verifies published HTTP/SSH,
 checks health/exploit, attempts management access from the hostile target,
@@ -171,5 +187,6 @@ ports are in the permitted range, reserved ports are excluded and mappings close
 after deletion. Base game-network chains remain installed.
 
 Chromium regression remains independently available with `RUN_BROWSER=1`.
-Only an actual successful host run permits `CHECKPOINT 8A PASSED` and the final
-`checkpoint-08a: split portal and arena runtime` commit.
+Install Chromium as the user running the tests. The Stage 17 script reports
+source/artifact test success, not MVP completion. Acceptance of installed release
+artifacts on two clean hosts is a separate requirement in the release guide.

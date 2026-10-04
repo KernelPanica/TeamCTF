@@ -1,4 +1,6 @@
 import os
+import json
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,7 +30,9 @@ def create_app(service=None, token=None):
                 game_port_min=int(os.environ.get("ARENA_GAME_PORT_MIN", "30000")),
                 game_port_max=int(os.environ.get("ARENA_GAME_PORT_MAX", "39999")),
                 reserved_ports={int(p) for p in os.environ.get("ARENA_RESERVED_PORTS", "22,80,443").split(",") if p},
-                management_port=int(os.environ.get("ARENA_MANAGEMENT_PORT", "8443")))
+                management_port=int(os.environ.get("ARENA_MANAGEMENT_PORT", "8443")),
+                case_images=json.loads(Path(os.environ['ARENA_CASE_IMAGES']).read_text())
+                if os.environ.get('ARENA_CASE_IMAGES') else None)
             app.state.service = ArenaService(Executor(runtime.cases_directory, runtime))
         else:
             app.state.service = service

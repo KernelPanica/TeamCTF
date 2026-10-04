@@ -3,6 +3,7 @@ import json
 import subprocess
 import tempfile
 import hashlib
+import re
 from pathlib import Path
 
 from shared.cases import CaseLoader, CaseSpec
@@ -16,9 +17,15 @@ class DockerRuntimeError(RuntimeError):
 
 class DockerRuntime:
     def __init__(self, cases_directory: Path = Path("arena/cases"), *, owner="local", publish_ip=None, public_host=None,
-                 game_port_min=30000, game_port_max=39999, reserved_ports=(), management_port=8443):
+                 game_port_min=30000, game_port_max=39999, reserved_ports=(), management_port=8443,
+                 case_images=None):
         self.cases_directory = Path(cases_directory).resolve()
         self.owner = owner
+        self.case_images = case_images
+        if case_images is not None and (not isinstance(case_images, dict) or not case_images or
+                any(not isinstance(ref, str) or not re.fullmatch(r'[a-z0-9./:_-]+@sha256:[0-9a-f]{64}', ref)
+                    for ref in case_images.values())):
+            raise ValueError('Release case images must be pinned repository@sha256 references')
         self.publish_ip = publish_ip
         self.public_host = public_host or publish_ip
         self.port_pool = None
@@ -80,14 +87,23 @@ class DockerRuntime:
         if any(self._resources(kind, match_id) for kind in ("container", "network", "volume")):
             raise DockerRuntimeError("match already has resources; destroy them before preparing again")
 
-        # Build once per prepare; Docker's layer cache reuses the immutable case image.
-        with tempfile.TemporaryDirectory(prefix="cyberrange-build-") as temporary:
-            image_file = Path(temporary) / "image-id"
-            self._docker(
-                "build", "--force-rm", "--tag", f"range-case-{case.id}:latest",
-                "--iidfile", str(image_file), str(directory), timeout=600,
-            )
-            image_id = image_file.read_text().strip()
+        if self.case_images is not None:
+            if case.id not in self.case_images:
+                raise DockerRuntimeError('Case missing from release image manifest')
+            image_id = self.case_images[case.id]
+            try:
+                self._docker('image', 'inspect', image_id)
+            except DockerRuntimeError:
+                self._docker('pull', image_id, timeout=600)
+        else:
+            # Local development retains case builds; releases use immutable images.
+            with tempfile.TemporaryDirectory(prefix="cyberrange-build-") as temporary:
+                image_file = Path(temporary) / "image-id"
+                self._docker(
+                    "build", "--force-rm", "--tag", f"range-case-{case.id}:latest",
+                    "--iidfile", str(image_file), str(directory), timeout=600,
+                )
+                image_id = image_file.read_text().strip()
         image = json.loads(self._docker("image", "inspect", image_id))[0]
         if image["Config"].get("Volumes"):
             raise DockerRuntimeError("case images must not declare volumes")

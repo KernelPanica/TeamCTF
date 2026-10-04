@@ -1954,8 +1954,25 @@ Arena startup reconciliation обнаруживает orphaned resources сво�
 
 ## 17.1 — Установка из релиза
 
-**Статус: planned.** Релизная сборка и установка пока не реализованы.
-Выполнять этот этап после предыдущих checkpoint, включая расширенный 8A.
+**Статус: in progress; CHECKPOINT 17 не закрыт.** Checkpoint 16 подтверждён
+на хосте: 201 passed. Серверов для финальной установки пока нет.
+
+Подготовлены сборщик wheel Portal, отдельные build contexts Portal/Arena/target,
+сборщик OCI и deployment-архивов с digest, SHA256SUMS, инструкции установки,
+обновления и rollback (`release/README.md`). Релизная Arena использует готовый
+Ubuntu target по digest; локальная разработка сохраняет прежнюю сборку case.
+Portal проверяет версию API/релиза Arena перед созданием матча. Добавлены
+native smoke установленного wheel и сценарий RED/BLUE acceptance через API/SSH.
+
+Локальная регрессия 2026-10-04: 199 passed, 10 skipped (Docker/host checks),
+включая браузерные тесты. Отдельно проверен установленный wheel вне checkout:
+миграции, каталог case, frontend, API и сохранение состояния без Docker/Arena
+package. Это не заменяет установку на два чистых сервера.
+
+Осталось собрать и проверить реальные OCI-образы/архивы, выбрать registry,
+установить candidate на два чистых Linux x86_64 сервера и выполнить полную
+acceptance: RED/BLUE, изоляция, cleanup, native Portal, restart/update/history.
+Образы не опубликованы; commit `checkpoint-17: mvp complete` пока не выполняется.
 
 Пользователь устанавливает Portal и Arena на два отдельных сервера из одного
 версионированного релиза, без клонирования репозитория и сборки образов на серверах.

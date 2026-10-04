@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 
 import httpx
 from pydantic import ValidationError
-from shared.arena import ArenaProvider, ArenaError, ArenaStatus, EventPage
+from shared.arena import ArenaProvider, ArenaError, ArenaStatus, EventPage, ArenaInfo
+from shared.version import API_VERSION, VERSION
 
 
 class RemoteArenaProvider(ArenaProvider):
@@ -43,9 +44,23 @@ class RemoteArenaProvider(ArenaProvider):
             raise ArenaError("ARENA_UNAVAILABLE_OR_INVALID") from None
 
     async def create_match(self, request):
+        await self.check_compatibility()
         body = request.model_dump(mode="json")
         body["red_key"] = request.red_key.get_secret_value()
         return await self.request("POST", "/v1/matches", ArenaStatus, json=body)
+
+    async def check_compatibility(self):
+        try:
+            info = await self.request('GET', '/v1/info', ArenaInfo)
+        except ArenaError as error:
+            if error.status == 404:
+                raise ArenaError('INCOMPATIBLE_ARENA_VERSION', 409) from None
+            raise
+        if info.api_version != API_VERSION or info.version != VERSION:
+            raise ArenaError('INCOMPATIBLE_ARENA_VERSION', 409)
+        if not info.ready:
+            raise ArenaError('NOT_READY')
+        return info
 
     async def get_match(self, match_id):
         return await self.request("GET", f"/v1/matches/{match_id}", ArenaStatus)
